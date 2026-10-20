@@ -1,4 +1,4 @@
-﻿# ⚡ FerrisPulse · 灵脉 (跨品牌外设调度中心) v2.0.0
+# ⚡ FerrisPulse · 灵脉 (跨品牌外设调度中心) v2.0.0
 
 <p align="center">
   <img src="app.png" width="108" height="108" alt="FerrisPulse Logo" />
@@ -15,6 +15,7 @@
   <a href="https://github.com/Ferris-echo/FerrisPulse"><img src="https://img.shields.io/badge/Memory-~12%20MB%20RAM-00ff88?style=flat-square" alt="Memory" /></a>
   <a href="https://github.com/Ferris-echo/FerrisPulse"><img src="https://img.shields.io/badge/CPU-0.00%25-00ff88?style=flat-square" alt="CPU" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL%20v3.0-blue.svg?style=flat-square" alt="License: GPL v3" /></a>
+  <a href="https://signpath.io"><img src="https://img.shields.io/badge/Code%20Signing-SignPath.io-success?style=flat-square&logo=windows" alt="SignPath" /></a>
 </p>
 
 ---
