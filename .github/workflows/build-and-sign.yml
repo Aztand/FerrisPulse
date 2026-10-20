@@ -1,0 +1,74 @@
+﻿name: Build and Sign Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-sign:
+    runs-on: windows-latest
+
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+
+      - name: 编译原生开源二进制 (build.bat)
+        shell: cmd
+        run: |
+          build.bat
+
+      - name: 运行全量自动化测试
+        shell: powershell
+        run: |
+          .\tools\run_all_tests.ps1
+
+      - name: 上传待签名构建产物
+        id: upload-unsigned-artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-artifact
+          path: FerrisPulse.exe
+
+      - name: 提交 SignPath 权威云端签名 (配置凭据后激活)
+        if: env.SIGNPATH_API_TOKEN != ''
+        uses: signpath/github-action-submit-signing-request@v1
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: 'ferrispulse'
+          signing-policy-slug: 'release-signing'
+          github-artifact-id: ${{ steps.upload-unsigned-artifact.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: 'signed-output'
+
+      - name: 替换为已签名的二进制文件
+        if: env.SIGNPATH_API_TOKEN != ''
+        shell: powershell
+        run: |
+          Copy-Item -Path signed-output\FerrisPulse.exe -Destination FerrisPulse.exe -Force
+          Write-Host "已加载权威数字签名:"
+          Get-AuthenticodeSignature FerrisPulse.exe | Format-List
+
+      - name: 打包便携版 ZIP (Portable Release)
+        shell: powershell
+        run: |
+          $ver = "${{ github.ref_name }}"
+          if ([string]::IsNullOrEmpty($ver) -or $ver -notmatch '^v') { $ver = "v2.1.1" }
+          .\tools\build_release_zip.ps1 -Version $ver
+
+      - name: 发布至 GitHub Releases 附件
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            FerrisPulse.exe
+            FerrisPulse_*_Portable.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
