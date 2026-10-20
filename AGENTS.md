@@ -1,6 +1,6 @@
 ﻿# 电量管家 (FerrisPulse) Agent Rules & Superpowers Configuration
 
-> 本文件为“电量管家”工作区的最高指令文件。在本项目中，Superpowers 默认开启，且必须与项目的 7 大开发铁律协同执行。
+> 本文件为“电量管家”工作区的最高指令文件。在本项目中，Superpowers 默认开启，且必须与项目的 7 大开发铁律及智能体实战手册协同执行。
 
 ---
 
@@ -26,7 +26,7 @@
 
 ## 2. FerrisPulse 维护规范与工程准则（7 大铁律）
 
-本项目开发同时必须严格遵守 [AGENT_RULES.md](file:///D:/%E7%94%B5%E9%87%8F%E7%AE%A1%E5%AE%B6/AGENT_RULES.md) 中的底层铁律：
+本项目开发同时必须严格遵守 [AGENT_RULES.md](file:///D:/FerrisPulse%20%C2%B7%20%E7%81%B5%E8%84%89/AGENT_RULES.md) 中的底层铁律：
 
 1. **语言标准与编译器基准**: 严格 C# 5.0 / .NET Framework 4.0，使用 Windows 原生自带 `csc.exe` 编译。严禁使用 C# 6.0+ 语法（禁止 `$"..."` 插值、禁止 `?.` 空条件运算符、禁止 `nameof` 等）。
 2. **零外部依赖铁律**: 仅允许引用 .NET 4.0 核心程序集。系统交互严格采用 Win32 P/Invoke，严禁引入 NuGet 包或第三方 DLL。
@@ -40,3 +40,33 @@
    - **严禁向 Git 仓库提交编译二进制（`*.exe`, `*.zip` 等）**，发布走 GitHub Releases 附件。
    - 临时脚本放 `tools/scratch/`，宣传素材放 `promo/`，归档放 `archive/`（均已配 `.gitignore`）。
    - Agent 收工前必须执行 `git status` 审查工作区，主动清除临时垃圾。
+
+---
+
+## 3. 智能体操作宝典与发布全流程索引 (Operational Handbook & Release SOP)
+
+任何接手本项目的 Agent，在处理版本发布、杀软误报、UI 状态机或复杂硬件 Bug 时，必须参阅深度手册：  
+👉 **[docs/AGENT_HANDBOOK.md](file:///D:/FerrisPulse%20%C2%B7%20%E7%81%B5%E8%84%89/docs/AGENT_HANDBOOK.md)**
+
+### 3.1 极速发布新版本 SOP 摘要 (Quick Release Flow)
+1. **对齐版本号**：
+   - `src/Properties/AssemblyInfo.cs` ➡️ `AssemblyVersion("X.Y.Z.0")` 等
+   - `version.json` ➡️ `latestVersion`, `downloadUrl`, `changelog`
+   - `CHANGELOG.md` ➡️ 顶部追加 `## 🚀 [vX.Y.Z] - YYYY-MM-DD`
+2. **构建与计算 Hash**：
+   - `Stop-Process -Name "FerrisPulse" -Force -ErrorAction SilentlyContinue; cmd.exe /c "build.bat"`
+   - 计算 `FerrisPulse.exe` 的 SHA256 与 FileSize，写回 `version.json`。
+3. **回归验证**：
+   - 运行全量测试：`powershell -ExecutionPolicy Bypass -File tools/run_all_tests.ps1`，确保全部 PASS。
+4. **一键双平台发布**：
+   - `powershell -ExecutionPolicy Bypass -File tools/publish_release.ps1 -Version "X.Y.Z"`（自动打 Tag、推 GitHub/Gitee 并上传 Release 附件）。
+
+---
+
+## 4. 智能体接力公约与知识持续反哺机制 (Living Knowledge Flywheel)
+
+<IMPORTANT>
+**可持续化知识公约 (Mandatory Relay Protocol)**：
+1. **上手第一步**：任何新 Agent 介入本项目时，**必须首先通读本文件 (`AGENTS.md`) 与 `docs/AGENT_HANDBOOK.md`**。
+2. **完工反哺义务**：后续任何 Agent 在解决复杂疑难 Bug、接入新品牌设备、优化发布流程或发现新安全陷阱后，**必须主动编辑并更新 `docs/AGENT_HANDBOOK.md`**，将新经验与避坑方案固化沉淀，禁止让后续 Agent 踩重复的坑！
+</IMPORTANT>
