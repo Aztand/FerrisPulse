@@ -579,6 +579,14 @@ namespace RazerBatteryTray
 
         public static bool IsSupportedGamingDevice(int vid, string path, string prod)
         {
+            // MCHOSE G87 V2 键盘 (3837:3033) 由 MchoseDeviceHelper 的键盘电量协议接管，
+            // 禁止通用鼠标协议向键盘 Vendor 集合误发 64 字节 Feature 报文。
+            if (vid == VID_MCHOSE && !string.IsNullOrEmpty(path))
+            {
+                string lowerPath = path.ToLowerInvariant();
+                if (lowerPath.Contains("pid_3033")) return false;
+            }
+
             switch (vid)
             {
                 case VID_LAMZU_OFFICIAL:

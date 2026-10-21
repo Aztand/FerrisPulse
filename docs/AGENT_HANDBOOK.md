@@ -18,6 +18,7 @@
    - 3.6 蓝牙外设与 Apple/Beats 生态避坑（真实名称与配对白名单）
    - 3.7 Windows 行终止符腐败陷阱（`\r\r\n` Double-CR Bug）
    - 3.8 社区开源贡献与代码署名礼仪
+   - 3.9 新品牌 HID 适配实战（飞智 GPA6 / 迈从 G87 V2）
 4. [版本发布标准作业程序 (Release SOP)](#4-版本发布标准作业程序-release-sop)
    - 4.1 云端标准流水线发布流程
    - 4.2 “发布后本地留旧测新”实战法则 (Local Test vs Remote Release SOP)
@@ -190,6 +191,21 @@
 
 ### 3.8 社区开源贡献与代码署名礼仪
 - 本项目致力于建立温暖、开放的极客开源生态。对于外部群友或社区开发者贡献的驱动代码或逆向协议（如 HyperX 飓风三无线耳机由群友 **“rm -rf /*”** 贡献），必须在代码注释、更新日志 `CHANGELOG.md` 及发布公告中妥善鸣谢，尊重每一位参与者的付出。
+
+### 3.9 新品牌 HID 适配实战（飞智 GPA6 / 迈从 G87 V2）
+1. **飞智 (Flydigi) APEX 6 / APEX 6 Pro / Vader 5 Pro**：
+   - VID/PID：`37D7:2502`（APEX 6 系列）、`37D7:2401`（Vader 5 Pro）；配置通道为 UsagePage `0xFFA0` 的 Vendor 集合，输入/输出均为 33 字节（前导 0 Report ID + 32 字节 GPA6 私有帧）。
+   - 帧格式：`5A A5 01 02 ...`，命令 `0x01` 读取设备信息；帧内 `[31]` 为 `[2..30]` 的 8 位和。回复从报告第 5 字节开始为 payload，`payload[6]` 低 4 位是电量档位、高 4 位是充电标志。
+   - **电量刻度不可照搬 APEX 5**：APEX 6 实测 `0..10` 档（10 = 100%），APEX 5 为 `0..5` 档。`FlydigiDeviceHelper.ParseInfo` 采用 `<=5 → ×20`、`<=10 → ×10` 的兼容映射，避免把满电 10 误显示为 10%。
+   - 必须用重叠 I/O + 超时取消读取；直接同步 `ReadFile` 在无回复时会永久阻塞 UI 轮询线程。
+2. **迈从 (MCHOSE) G87 V2 三模机械键盘**：
+   - VID/PID：`3837:3033`；配置通道优先选择 UsagePage `1` / Usage `0` 的 65 字节集合（MI_01），不要误开键盘按键集合（`\kbd`，写 LED 会被 Windows 拒绝访问 5）。
+   - **正确通道（实机确认）**：G87 V2 固件不响应 Web 端的 `0x4A/0x87` 电池查询；官方 M HUB 通过 **性能配置查询** 读取电量。MI_01（UsagePage `1`/Usage `0`）为未编号报告，Windows 写入缓冲区必须为 `[0x00] + 64 字节`。
+   - 查询帧：`55 05 00 38 38 00...`（64 字节，补前导 Report ID 0 后共 65 字节）。回复：`AA 05 ...`；**offset 40 = rf_battery（0..100），offset 41 = isCharging（0/1）**。本机实测 offset 40=`0x15`=21%，与官方 M HUB 显示 20%（UI 按 10% 精度向下取整）一致。
+   - 官方 M HUB 的 `getBattery` 命令表（`13 4A...`）只适用于部分旧固件/鼠标；G87 V2 必须用 `0x55` 性能帧。不要因为 Web 端存在 `getBattery` 就假设键盘可用。
+   - 未查通时**严禁把设备标成离线**：接收器与键盘在线就应显示在线、电量未知（有缓存才显示缓存值）；更不能伪造 `-1%` 为“已识别电量”。`MchoseDeviceHelper` 现已使用 `0x55` 性能帧并实机读到 21%。
+   - `3837:3033` 必须在 `UniversalGamingDeviceHelper` 中显式排除，否则会被通用鼠标协议误当成 64 字节 Feature 设备探测。
+3. **通用基础设施**：新品牌统一复用 `HidTransport.cs`（SetupAPI 枚举 + HidD 属性/能力 + 重叠 I/O），不要在每个 Helper 中重复声明 P/Invoke；所有 64/65 字节报告写入前必须按 `HidP_GetCaps` 的 `OutputReportByteLength` 补齐，否则 `WriteFile` 返回 `ERROR_INVALID_PARAMETER (87)`。
 
 ---
 

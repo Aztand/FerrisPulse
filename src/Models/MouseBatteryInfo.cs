@@ -122,7 +122,8 @@ namespace RazerBatteryTray
                 if (Brand == "Pulsar") return Color.FromArgb(239, 83, 80);
                 if (Brand == "Endgame Gear") return Color.FromArgb(255, 112, 67);
                 if (Brand == "Attack Shark") return Color.FromArgb(38, 198, 218);
-                if (Brand == "Mchose" || Brand == "迈从") return Color.FromArgb(126, 87, 194);
+                if (Brand == "Mchose" || Brand == "MCHOSE" || Brand == "迈从") return Color.FromArgb(126, 87, 194);
+                if (Brand == "Flydigi" || Brand == "飞智") return Color.FromArgb(124, 77, 255);
                 if (Brand == "Keychron") return Color.FromArgb(255, 87, 34);
                 if (Brand == "Dareu" || Brand == "达尔优") return Color.FromArgb(255, 152, 0);
                 if (Brand == "Delux" || Brand == "多彩") return Color.FromArgb(3, 169, 244);

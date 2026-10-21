@@ -39,6 +39,9 @@ D:\FerrisPulse · 灵脉\
     │   ├── LogitechDeviceHelper.cs [罗技 HID++ 协议解析]
     │   ├── NuphyDeviceHelper.cs [NuPhy 键盘电量协议与侧灯控制]
     │   ├── ValkyrieDeviceHelper.cs [瓦尔基里全系键盘/鼠标私有 HID 协议、2.4G 接收器多模解析、8K 回报率与 DPI 调节]
+    │   ├── FlydigiDeviceHelper.cs [飞智 APEX 6 / Vader 5 Pro GPA6 协议、0xFFA0 33B 帧、电量/充电解析]
+    │   ├── MchoseDeviceHelper.cs [迈从 G87 V2 键盘 0x4A/0x87 电池协议、接收器休眠占位与离线缓存]
+    │   ├── HidTransport.cs     [零依赖 SetupAPI/HidD 枚举、重叠 I/O 读写与超时取消总线]
     │   ├── BluetoothDeviceHelper.cs [Windows 原生 BLE 电池服务]
     │   ├── GenericHidHelper.cs  [通用 HID 电池报告解析]
     │   ├── UniversalWinLockHelper.cs [Windows 键硬件/驱动级防误触锁定]
@@ -107,6 +110,8 @@ D:\FerrisPulse · 灵脉\
 | **托盘图标丢失 / Explorer 重启自愈** | `src/UI/Forms/MainForm.Events.cs` | 监听 `WM_TASKBARCREATED` 并自动恢复 |
 | **雷蛇 DPI 档位 / 8K 回报率 / XY 轴独立灵敏度** | `src/Hardware/RazerDeviceHelper.cs` | 雷蛇私有 HID 报文、独立 X/Y 轴与板载 Flash 写入 |
 | **瓦尔基里全系键盘/鼠标支持** | `src/Hardware/ValkyrieDeviceHelper.cs` | 瓦尔基里全系 2.4G 接收器/HID 协议解析、双模电量、8K 回报率与独立 X/Y 轴 DPI 调节 |
+| **飞智 APEX 6 / Vader 5 Pro 手柄电量** | `src/Hardware/FlydigiDeviceHelper.cs` | GPA6 0xFFA0 33 字节帧、命令 0x01 设备信息、0..10 档电量与充电状态 |
+| **迈从 G87 V2 键盘电量** | `src/Hardware/MchoseDeviceHelper.cs` | 0x13/0x4A 无线、0x09/0x87 有线、校验和含 Report ID、休眠占位与离线缓存 |
 | **DPI 档位管理与 XY 轴比例调节** | `src/UI/Forms/DpiManagementDialog.cs` / `src/UI/Controls/DpiStageRowControl.cs` | DPI 档位增删、XY 轴独立调节 (4:3/16:10 比例联动) 与板载固化 |
 | **屏幕悬浮 OSD 指示器** | `src/UI/Forms/DpiOsdForm.cs` | 游戏前台免切焦点悬浮 HUD、DPI/XY独立双轴显示与回报率变动提示 |
 | **多设备优先级拖拽与首选设备** | `src/Hardware/DeviceManager.cs` / `DevicePriorityForm.cs` | 外设优先级权重与展示顺序 |

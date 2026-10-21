@@ -54,7 +54,7 @@ namespace RazerBatteryTray
                     cleanSuffix = cleanSuffix.Substring(0, cleanSuffix.Length - 3);
                 }
 
-                string[] commonPrefixes = new string[] { "Gaming", "HID", "Valkyrie", "Rapoo", "VGN", "Logitech", "Apple", "AppleHID", "AppleBT", "BT", "BLE", "HyperX" };
+                string[] commonPrefixes = new string[] { "Gaming", "HID", "Valkyrie", "Rapoo", "VGN", "Logitech", "Apple", "AppleHID", "AppleBT", "BT", "BLE", "HyperX", "Flydigi", "MCHOSE" };
                 for (int i = 0; i < commonPrefixes.Length; i++)
                 {
                     string p = commonPrefixes[i];
@@ -756,6 +756,78 @@ namespace RazerBatteryTray
             }
             catch { }
 
+            // 2.95 Query Flydigi (APEX 6 / APEX 6 Pro / Vader 5 Pro gamepads)
+            try
+            {
+                var flydigiDevices = FlydigiDeviceHelper.QueryAllFlydigiDevices();
+                if (flydigiDevices != null && flydigiDevices.Count > 0)
+                {
+                    foreach (var dev in flydigiDevices)
+                    {
+                        if (dev != null && (dev.IsConnected || dev.IsDonglePresent))
+                        {
+                            bool alreadyInList = false;
+                            for (int i = 0; i < list.Count; i++)
+                            {
+                                if (list[i].DeviceId.Equals(dev.DeviceId, StringComparison.OrdinalIgnoreCase) ||
+                                    (!string.IsNullOrEmpty(list[i].HardwareFingerprint) && list[i].HardwareFingerprint.Equals(dev.HardwareFingerprint, StringComparison.OrdinalIgnoreCase)))
+                                {
+                                    alreadyInList = true;
+                                    break;
+                                }
+                            }
+
+                            if (!alreadyInList)
+                            {
+                                dev.IsCustom = false;
+                                list.Add(dev);
+                                if (dev.BatteryPercent >= 0)
+                                {
+                                    UpdateCustomDeviceBattery(dev.DeviceId, dev.BatteryPercent, DateTime.Now);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            // 2.96 Query MCHOSE (G87 V2 tri-mode mechanical keyboard)
+            try
+            {
+                var mchoseDevices = MchoseDeviceHelper.QueryAllMchoseDevices();
+                if (mchoseDevices != null && mchoseDevices.Count > 0)
+                {
+                    foreach (var dev in mchoseDevices)
+                    {
+                        if (dev != null && (dev.IsConnected || dev.IsDonglePresent))
+                        {
+                            bool alreadyInList = false;
+                            for (int i = 0; i < list.Count; i++)
+                            {
+                                if (list[i].DeviceId.Equals(dev.DeviceId, StringComparison.OrdinalIgnoreCase) ||
+                                    (!string.IsNullOrEmpty(list[i].HardwareFingerprint) && list[i].HardwareFingerprint.Equals(dev.HardwareFingerprint, StringComparison.OrdinalIgnoreCase)))
+                                {
+                                    alreadyInList = true;
+                                    break;
+                                }
+                            }
+
+                            if (!alreadyInList)
+                            {
+                                dev.IsCustom = false;
+                                list.Add(dev);
+                                if (dev.BatteryPercent >= 0)
+                                {
+                                    UpdateCustomDeviceBattery(dev.DeviceId, dev.BatteryPercent, DateTime.Now);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
             // 2.10 Query Apple & Beats Devices (AirPods, Beats Studio/Fit/Solo, Magic Mouse/Trackpad/Keyboard)
             try
             {
@@ -879,7 +951,15 @@ namespace RazerBatteryTray
                         }
                         if (!string.IsNullOrEmpty(cfg.CustomName))
                         {
-                            if (isRazer && (
+                            bool keepOfficialName = (existDev.Brand == "Flydigi" && cfg.CustomName.IndexOf("Controller", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                                    (existDev.Brand == "MCHOSE" && cfg.CustomName.IndexOf("2.4G", StringComparison.OrdinalIgnoreCase) >= 0);
+                            if (keepOfficialName)
+                            {
+                                cfg.CustomName = existDev.DeviceName;
+                                cfg.OriginalName = existDev.DeviceName;
+                                DeviceManager.SaveCustomDevice(cfg);
+                            }
+                            else if (isRazer && (
                                 cfg.CustomName.Equals("Razer Mouse", StringComparison.OrdinalIgnoreCase) ||
                                 cfg.CustomName.Equals("Razer Wireless Mouse", StringComparison.OrdinalIgnoreCase) ||
                                 cfg.CustomName.Equals("HyperPolling Wireless Dongle", StringComparison.OrdinalIgnoreCase) ||
@@ -892,7 +972,7 @@ namespace RazerBatteryTray
                                 cfg.OriginalName = existDev.DeviceName;
                                 DeviceManager.SaveCustomDevice(cfg);
                             }
-                            existDev.CustomName = cfg.CustomName;
+                            if (!keepOfficialName) existDev.CustomName = cfg.CustomName;
                         }
                         continue;
                     }

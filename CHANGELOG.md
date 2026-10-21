@@ -2,6 +2,16 @@
 
 所有关于 **FerrisPulse · 灵脉 (多品牌外设电量管家与独占感知引擎)** 的重要升级与功能特性均记录于此。
 
+## 🚧 [Unreleased] - 飞智 / 迈从新品牌外设适配
+
+### 🎮 新品牌协议接入
+- **飞智 (Flydigi) APEX 6 / APEX 6 Pro / Vader 5 Pro**：新增 `FlydigiDeviceHelper`，通过 `0xFFA0` Vendor HID 集合发送 GPA6 `5A A5 01 02` 设备信息查询，解析 `0..10` 档电量、充电标志、连接形态与型号；实测 APEX 6 Pro 返回 100% 电量。
+- **迈从 (MCHOSE) G87 V2 三模机械键盘**：新增 `MchoseDeviceHelper`，通过官方 SDK 的 `55 05 00 38 38` 性能配置查询读取 `rf_battery`（回复 `AA 05 ...`，offset 40）与 `isCharging`（offset 41）。实机 2.4G 读到 **21%**（官方 M HUB 显示 20%，UI 按 10% 精度取整），拔掉充电线后 `isCharging=0`。通用电竞鼠标协议已显式隔离 `3837:3033`。
+- **通用 HID 总线**：新增 `HidTransport`，统一 SetupAPI 枚举、HidD 属性/能力查询与重叠 I/O 超时读写，杜绝同步 `ReadFile` 阻塞 UI 轮询线程。
+- **测试**：新增 `test_flydigi_mchose_support.ps1`，覆盖 VID/PID 白名单、GPA6 电量刻度、MCHOSE 0x55 性能帧/0x4A/0x87 报文与 DeviceManager 注册/隔离。
+
+---
+
 ## 🚀 [v2.2.0] - 2026-10-21 (AI 智能体专属外设适配 · 9大重点体验与稳定性修复)
 
 ### 🤖 一、 AI 智能体专属外设适配（做自己的开发者）
