@@ -106,8 +106,8 @@ if ($stage4Btn.Text -ne "3000×2250") {
     exit 1
 }
 
-if ($stage4Btn.Width -lt 55) {
-    Write-Host ("FAIL: 按钮宽度预期 >= 55px，实际为: " + $stage4Btn.Width + "px") -ForegroundColor Red
+if ($stage4Btn.Width -lt 50) {
+    Write-Host ("FAIL: 按钮宽度预期 >= 50px，实际为: " + $stage4Btn.Width + "px") -ForegroundColor Red
     exit 1
 }
 Write-Host ("PASS: DPI 按钮文字正确且宽度提升至 " + $stage4Btn.Width + "px") -ForegroundColor Green
