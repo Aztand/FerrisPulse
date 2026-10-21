@@ -7,13 +7,18 @@ on:
   workflow_dispatch:
     inputs:
       signing_policy:
-        description: 'SignPath Signing Policy Slug'
+        description: 'SignPath 签名策略 (Signing Policy)'
         required: true
         default: 'test-signing'
         type: choice
         options:
           - test-signing
           - release-signing
+      release_tag:
+        description: '发布到 GitHub Releases 的版本号 (如 v2.2.0，留空则仅构建签名不发 Release)'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
@@ -80,8 +85,8 @@ jobs:
       - name: 打包便携版 ZIP (Portable Release)
         shell: powershell
         run: |
-          $ver = "${{ github.ref_name }}"
-          if ([string]::IsNullOrEmpty($ver) -or $ver -notmatch '^v') { $ver = "v2.1.1" }
+          $ver = "${{ inputs.release_tag || github.ref_name }}"
+          if ([string]::IsNullOrEmpty($ver) -or $ver -notmatch '^v') { $ver = "v2.2.0" }
           .\tools\build_release_zip.ps1 -Version $ver
 
       - name: 上传已签名最终成品 (Signed Artifact)
@@ -94,8 +99,10 @@ jobs:
 
       - name: 发布至 GitHub Releases 附件
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || (inputs.release_tag != '' && inputs.release_tag != null)
         with:
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          name: ${{ inputs.release_tag != '' && format('FerrisPulse · 灵脉 {0}', inputs.release_tag) || '' }}
           files: |
             FerrisPulse.exe
             FerrisPulse_*_Portable.zip
