@@ -29,6 +29,7 @@ aumid_debug.txt
 .env*
 .release_env
 *token*
+docs/RELEASE_WORKFLOW_SOP.md
 
 # 3. 多媒体素材与视频音效
 *.mp4
