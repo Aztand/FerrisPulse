@@ -97,7 +97,7 @@ build.bat
 
 ### 🤖 设备未被识别？用 AI Agent 做自己的开发者！(AI-Powered Adaptation)
 找不到你的设备？**试试自己做自己的开发者！**  
-你可以借助本地 AI Agent（如 DeepSeek Harness、Tencent Workbuddy、Google Anti-gravity、OpenAI Codex 等），让智能体直接阅读我们的工程源码并自动探测你物理连接的外设通信报文与电量指令，完成一站式极客适配！
+你可以借助本地 AI Agent（如 DeepSeek Harness、Tencent Workbuddy、Google Antigravity、OpenAI Codex 等），让智能体直接阅读我们的工程源码并自动探测你物理连接的外设通信报文与电量指令，完成一站式极客适配！
 
 👉 **查看完整中英双语 AI 适配指南与专属 Prompt：[AI 智能体专属外设适配指南 (docs/AI_DEVICE_ADAPTATION_GUIDE.md)](docs/AI_DEVICE_ADAPTATION_GUIDE.md)**
 

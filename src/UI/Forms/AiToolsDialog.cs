@@ -2,7 +2,7 @@
 // 模块名称: AiToolsDialog.cs
 // 所属区域: UI/Forms (业务对话框层)
 // 核心职责:
-//   展示推荐的本地 AI Agent 工具（DeepSeek Harness、Workbuddy、Anti-gravity、Codex），
+//   展示推荐的本地 AI Agent 工具（DeepSeek Harness、Workbuddy、Antigravity、Codex），
 //   引导用户自主使用智能体逆向适配未识别硬件。
 // 依赖关系: Controls.*, Core.*
 //
@@ -26,11 +26,8 @@ namespace RazerBatteryTray
         private class ToolItem
         {
             public string Name { get; set; }
-            public string Tag { get; set; }
             public string Description { get; set; }
             public string Url { get; set; }
-            public bool NeedsVpn { get; set; }
-            public Color AccentColor { get; set; }
         }
 
         private ToolItem[] tools = new ToolItem[]
@@ -38,38 +35,26 @@ namespace RazerBatteryTray
             new ToolItem
             {
                 Name = "DeepSeek Harness",
-                Tag = "开源轻量",
                 Description = "开源智能体运行时，支持本地命令与工具链自动化调度",
-                Url = "https://github.com/deepseek-ai/dsh",
-                NeedsVpn = false,
-                AccentColor = Color.FromArgb(0, 210, 255)
+                Url = "https://www.deepseek.com/harness/"
             },
             new ToolItem
             {
                 Name = "Tencent Workbuddy",
-                Tag = "桌面自主 Agent",
                 Description = "腾讯桌面级自主智能体工作台，内置编码环境与本地自主规划",
-                Url = "https://workbuddy.ai/",
-                NeedsVpn = false,
-                AccentColor = Color.FromArgb(0, 230, 118)
+                Url = "https://workbuddy.ai/"
             },
             new ToolItem
             {
-                Name = "Google Anti-gravity",
-                Tag = "自主编程",
-                Description = "Google DeepMind 新一代自主编程与硬件系统级调试智能体",
-                Url = "https://antigravity.google/",
-                NeedsVpn = true,
-                AccentColor = Color.FromArgb(180, 120, 255)
+                Name = "Google Antigravity",
+                Description = "Google DeepMind 新一代自主编程与硬件系统级调试智能体（需科学上网）",
+                Url = "https://antigravity.google/"
             },
             new ToolItem
             {
                 Name = "OpenAI Codex",
-                Tag = "代码智能体",
-                Description = "深度集成的代码智能体开发环境与自动化工具链",
-                Url = "https://openai.com/",
-                NeedsVpn = true,
-                AccentColor = Color.FromArgb(255, 170, 0)
+                Description = "深度集成的代码智能体开发环境与自动化工具链（需科学上网）",
+                Url = "https://openai.com/zh-Hans-CN/codex/"
             }
         };
 
@@ -168,57 +153,32 @@ namespace RazerBatteryTray
             // Name
             Label lblName = new Label();
             lblName.Text = item.Name;
-            lblName.Font = new Font("Microsoft YaHei UI", 9.5F, FontStyle.Bold);
+            lblName.Font = new Font("Microsoft YaHei UI", 9.8F, FontStyle.Bold);
             lblName.ForeColor = Color.White;
-            lblName.Location = new Point(pad, (int)(10 * dpiScale));
+            lblName.Location = new Point(pad, (int)(12 * dpiScale));
             lblName.AutoSize = true;
             p.Controls.Add(lblName);
-
-            // Tag Badge
-            Label lblTag = new Label();
-            lblTag.Text = item.Tag;
-            lblTag.Font = new Font("Microsoft YaHei UI", 7.5F, FontStyle.Bold);
-            lblTag.ForeColor = item.AccentColor;
-            lblTag.BackColor = Color.FromArgb(30, item.AccentColor.R, item.AccentColor.G, item.AccentColor.B);
-            lblTag.Padding = new Padding((int)(4 * dpiScale), (int)(1 * dpiScale), (int)(4 * dpiScale), (int)(1 * dpiScale));
-            lblTag.Location = new Point(pad + (int)(140 * dpiScale), (int)(11 * dpiScale));
-            lblTag.AutoSize = true;
-            p.Controls.Add(lblTag);
-
-            // Notice badge if needs VPN
-            if (item.NeedsVpn)
-            {
-                Label lblVpn = new Label();
-                lblVpn.Text = "🌐 需科学上网";
-                lblVpn.Font = new Font("Microsoft YaHei UI", 7.5F, FontStyle.Bold);
-                lblVpn.ForeColor = Color.FromArgb(255, 170, 0);
-                lblVpn.BackColor = Color.FromArgb(35, 255, 170, 0);
-                lblVpn.Padding = new Padding((int)(4 * dpiScale), (int)(1 * dpiScale), (int)(4 * dpiScale), (int)(1 * dpiScale));
-                lblVpn.Location = new Point(pad + (int)(215 * dpiScale), (int)(11 * dpiScale));
-                lblVpn.AutoSize = true;
-                p.Controls.Add(lblVpn);
-            }
 
             // Description
             Label lblDesc = new Label();
             lblDesc.Text = item.Description;
-            lblDesc.Font = new Font("Microsoft YaHei UI", 8F);
+            lblDesc.Font = new Font("Microsoft YaHei UI", 8.2F);
             lblDesc.ForeColor = Color.FromArgb(150, 160, 180);
-            lblDesc.Location = new Point(pad, (int)(36 * dpiScale));
-            lblDesc.Size = new Size(w - pad * 2 - (int)(100 * dpiScale), (int)(32 * dpiScale));
+            lblDesc.Location = new Point(pad, (int)(38 * dpiScale));
+            lblDesc.Size = new Size(w - pad * 2 - (int)(100 * dpiScale), (int)(30 * dpiScale));
             p.Controls.Add(lblDesc);
 
             // Open Link Button
             ModernButton btnLink = new ModernButton();
             btnLink.Text = "访问官网 ↗";
-            btnLink.Font = new Font("Microsoft YaHei UI", 8.2F, FontStyle.Bold);
+            btnLink.Font = new Font("Microsoft YaHei UI", 8.5F, FontStyle.Bold);
             btnLink.NormalColor = Color.FromArgb(32, 40, 56);
             btnLink.HoverColor = Color.FromArgb(46, 58, 82);
             btnLink.PressedColor = Color.FromArgb(22, 28, 40);
             btnLink.BorderColor = Color.FromArgb(64, 80, 110);
             btnLink.TextColor = Color.FromArgb(0, 210, 255);
-            int btnW = (int)(90 * dpiScale);
-            int btnH = (int)(28 * dpiScale);
+            int btnW = (int)(92 * dpiScale);
+            int btnH = (int)(30 * dpiScale);
             btnLink.Location = new Point(w - pad - btnW, (int)(22 * dpiScale));
             btnLink.Size = new Size(btnW, btnH);
             btnLink.Click += (s, e) =>

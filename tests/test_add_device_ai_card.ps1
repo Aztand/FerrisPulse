@@ -2,7 +2,7 @@
 # 验证：
 # 1. 外设添加向导中“自己做自己的开发者”微光卡片与控件层级
 # 2. 复制提示词内容规范（包含 AGENT_HANDBOOK、Ferris-echo 官方源，去除冗余词）
-# 3. 推荐 AI 工具弹窗（AiToolsDialog）正常实例化与工具项列表
+# 3. 推荐 AI 工具弹窗（AiToolsDialog）正常实例化，删除冗余标签，链接与 Antigravity 无横杠核验
 
 $ErrorActionPreference = "Stop"
 
@@ -77,13 +77,33 @@ if ($null -eq $fTools -or $null -eq $fTools.GetValue($wizard)) {
 }
 Write-Host "PASS: btnAiTools 按钮装配正常" -ForegroundColor Green
 
-Write-Host "`n--- 测试 3: 验证 AiToolsDialog 独立弹窗实例化 ---" -ForegroundColor Cyan
+Write-Host "`n--- 测试 3: 验证 AiToolsDialog 独立弹窗与源码规范（无冗余标签，链接校正） ---" -ForegroundColor Cyan
 $aiDlg = [System.Activator]::CreateInstance($tAiDlg, @([float]1.0))
 if ($null -eq $aiDlg -or $aiDlg.Controls.Count -lt 4) {
     Write-Host "FAIL: AiToolsDialog 控件不足或创建失败！" -ForegroundColor Red
     exit 1
 }
 Write-Host "PASS: AiToolsDialog 推荐工具弹窗创建正常 (Controls=$($aiDlg.Controls.Count))" -ForegroundColor Green
+
+# 源码断言
+$dlgCs = [System.IO.File]::ReadAllText("src/UI/Forms/AiToolsDialog.cs", [System.Text.Encoding]::UTF8)
+if ($dlgCs.Contains("lblTag") -or $dlgCs.Contains("lblVpn")) {
+    Write-Host "FAIL: AiToolsDialog 依然包含未删除的标签控件！" -ForegroundColor Red
+    exit 1
+}
+Write-Host "PASS: AiToolsDialog 已成功删除多余杂乱的标签徽章，排版纯净统一" -ForegroundColor Green
+
+if ($dlgCs.Contains("Anti-gravity")) {
+    Write-Host "FAIL: Antigravity 中间依然存在多余的一杠！" -ForegroundColor Red
+    exit 1
+}
+Write-Host "PASS: Antigravity 中间已无横杠" -ForegroundColor Green
+
+if (-not $dlgCs.Contains("https://openai.com/zh-Hans-CN/codex/") -or -not $dlgCs.Contains("https://www.deepseek.com/harness/")) {
+    Write-Host "FAIL: Codex 或 DeepSeek 链接未更新至指定官网路径！" -ForegroundColor Red
+    exit 1
+}
+Write-Host "PASS: Codex 与 DeepSeek 官网链接校正全部正确" -ForegroundColor Green
 
 Write-Host "`n==========================================================" -ForegroundColor Green
 Write-Host " ALL PASS: AI 智能体专属外设适配功能验证全部通过！" -ForegroundColor Green

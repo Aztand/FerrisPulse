@@ -3,7 +3,7 @@
 > **致所有 FerrisPulse 用户与开源极客**：  
 > 市场上外设品牌与型号千差万别，仅靠开发者逐个适配已难以满足大家日益丰富的外设需求。  
 > **找不到你的设备？试试自己做自己的开发者！**  
-> 借助本地 AI Agent（如 DeepSeek Harness、Workbuddy、Anti-gravity、Codex 等），可以让智能体自动为你探测硬件通信、分析报文并编写适配代码。完成适配后，诚挚邀请你将代码共享回主线，共同打造最强跨品牌桌面引擎！
+> 借助本地 AI Agent（如 DeepSeek Harness、Workbuddy、Antigravity、Codex 等），可以让智能体自动为你探测硬件通信、分析报文并编写适配代码。完成适配后，诚挚邀请你将代码共享回主线，共同打造最强跨品牌桌面引擎！
 
 ---
 
@@ -24,13 +24,13 @@
 ### 1.1 推荐 AI Agent 工具
 你可以选用任意支持本地命令执行、文件读写与网络检索的智能体工具：
 - 🤖 **DeepSeek Harness (dsh)**: 开源轻量级智能体运行时，支持本地命令与工具链自动化调度。  
-  🔗 官方入口: [https://github.com/deepseek-ai/dsh](https://github.com/deepseek-ai/dsh)
+  🔗 官方入口: [https://www.deepseek.com/harness/](https://www.deepseek.com/harness/)
 - 🤖 **Tencent Workbuddy**: 腾讯桌面级自主智能体工作台，内置编码环境与本地自主规划。  
   🔗 官方入口: [https://workbuddy.ai/](https://workbuddy.ai/)
-- 🤖 **Anti-gravity (Google DeepMind)**: 新一代自主编程与硬件调试智能体。 *(提示: 需科学上网)*  
+- 🤖 **Antigravity (Google DeepMind)**: 新一代自主编程与硬件调试智能体。 *(提示: 需科学上网)*  
   🔗 官方入口: [https://antigravity.google/](https://antigravity.google/)
 - 🤖 **OpenAI Codex**: 深度集成的代码智能体开发环境。 *(提示: 需科学上网)*  
-  🔗 官方入口: [https://openai.com/](https://openai.com/)
+  🔗 官方入口: [https://openai.com/zh-Hans-CN/codex/](https://openai.com/zh-Hans-CN/codex/)
 
 ---
 
@@ -97,13 +97,13 @@
 ### 2.1 Recommended AI Agent Tools
 You can use any local or autonomous coding agent with shell execution, file system access, and web search capabilities:
 - 🤖 **DeepSeek Harness (dsh)**: Open-source agent runtime with modular toolchain execution.  
-  🔗 Official: [https://github.com/deepseek-ai/dsh](https://github.com/deepseek-ai/dsh)
+  🔗 Official: [https://www.deepseek.com/harness/](https://www.deepseek.com/harness/)
 - 🤖 **Tencent Workbuddy**: Desktop autonomous agent workspace supporting autonomous coding.  
   🔗 Official: [https://workbuddy.ai/](https://workbuddy.ai/)
-- 🤖 **Anti-gravity (Google DeepMind)**: Next-gen autonomous coding and hardware debugging agent. *(Note: VPN/Proxy may be required depending on region)*  
+- 🤖 **Antigravity (Google DeepMind)**: Next-gen autonomous coding and hardware debugging agent. *(Note: VPN/Proxy may be required depending on region)*  
   🔗 Official: [https://antigravity.google/](https://antigravity.google/)
 - 🤖 **OpenAI Codex**: Deeply integrated coding agent and developer tools. *(Note: VPN/Proxy may be required depending on region)*  
-  🔗 Official: [https://openai.com/](https://openai.com/)
+  🔗 Official: [https://openai.com/zh-Hans-CN/codex/](https://openai.com/zh-Hans-CN/codex/)
 
 ---
 
