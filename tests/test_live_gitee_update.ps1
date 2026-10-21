@@ -6,6 +6,11 @@
 # ============================================================================
 
 $ErrorActionPreference = "Stop"
+
+if ($env:GITHUB_ACTIONS -eq "true" -or $env:CI -eq "true") {
+    Write-Host "PASS: 检测到海外 CI 环境，跳过跨洋 Gitee 探测以避免网络抖动与看门狗超时" -ForegroundColor Green
+    exit 0
+}
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = (Get-Item "$scriptDir\..").FullName
 

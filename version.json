@@ -3,7 +3,7 @@
     "releaseDate": "2026-10-21",
     "minSupportedVersion": "1.0.0",
     "downloadUrl": "https://gitee.com/Ferris-echo/ferris-pulse/releases/download/v2.2.0/FerrisPulse.exe",
-    "sha256": "fce70db23f851e3706248139e1e3c13d767645d07baab4fff40b3072410cf676",
+    "sha256": "8f153042203ee09d97b6d39ba38e05e80cb2ab3ddc149640459edc56fbafa79e",
     "fileSize": 859648,
     "changelog": [
         "一、 AI 智能体专属外设适配（做自己的开发者）",
