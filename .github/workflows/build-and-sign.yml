@@ -1,10 +1,19 @@
-﻿name: Build and Sign Release
+name: Build and Sign Release
 
 on:
   push:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      signing_policy:
+        description: 'SignPath Signing Policy Slug'
+        required: true
+        default: 'test-signing'
+        type: choice
+        options:
+          - test-signing
+          - release-signing
 
 permissions:
   contents: write
@@ -43,7 +52,7 @@ jobs:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
           project-slug: 'ferrispulse'
-          signing-policy-slug: 'release-signing'
+          signing-policy-slug: ${{ inputs.signing_policy || 'test-signing' }}
           github-artifact-id: ${{ steps.upload-unsigned-artifact.outputs.artifact-id }}
           wait-for-completion: true
           output-artifact-directory: 'signed-output'
