@@ -54,7 +54,7 @@ namespace RazerBatteryTray
                     cleanSuffix = cleanSuffix.Substring(0, cleanSuffix.Length - 3);
                 }
 
-                string[] commonPrefixes = new string[] { "Gaming", "HID", "Valkyrie", "Rapoo", "VGN", "Logitech", "Apple", "AppleHID", "AppleBT", "BT", "BLE", "HyperX", "Flydigi", "MCHOSE" };
+                string[] commonPrefixes = new string[] { "Gaming", "HID", "Valkyrie", "Rapoo", "VGN", "Logitech", "Apple", "AppleHID", "AppleBT", "BT", "BLE", "HyperX", "Flydigi", "MCHOSE", "Sony" };
                 for (int i = 0; i < commonPrefixes.Length; i++)
                 {
                     string p = commonPrefixes[i];
@@ -828,6 +828,42 @@ namespace RazerBatteryTray
             }
             catch { }
 
+            // 2.97 Query Sony (INZONE Buds WF-G700N wireless earbuds)
+            try
+            {
+                var sonyDevices = SonyInzoneHelper.QueryAllSonyInzoneDevices();
+                if (sonyDevices != null && sonyDevices.Count > 0)
+                {
+                    foreach (var dev in sonyDevices)
+                    {
+                        if (dev != null && (dev.IsConnected || dev.IsDonglePresent))
+                        {
+                            bool alreadyInList = false;
+                            for (int i = 0; i < list.Count; i++)
+                            {
+                                if (list[i].DeviceId.Equals(dev.DeviceId, StringComparison.OrdinalIgnoreCase) ||
+                                    (!string.IsNullOrEmpty(list[i].HardwareFingerprint) && list[i].HardwareFingerprint.Equals(dev.HardwareFingerprint, StringComparison.OrdinalIgnoreCase)))
+                                {
+                                    alreadyInList = true;
+                                    break;
+                                }
+                            }
+
+                            if (!alreadyInList)
+                            {
+                                dev.IsCustom = false;
+                                list.Add(dev);
+                                if (dev.BatteryPercent >= 0)
+                                {
+                                    UpdateCustomDeviceBattery(dev.DeviceId, dev.BatteryPercent, DateTime.Now);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
             // 2.10 Query Apple & Beats Devices (AirPods, Beats Studio/Fit/Solo, Magic Mouse/Trackpad/Keyboard)
             try
             {
@@ -952,7 +988,7 @@ namespace RazerBatteryTray
                         if (!string.IsNullOrEmpty(cfg.CustomName))
                         {
                             bool keepOfficialName = (existDev.Brand == "Flydigi" && cfg.CustomName.IndexOf("Controller", StringComparison.OrdinalIgnoreCase) >= 0) ||
-                                                    (existDev.Brand == "MCHOSE" && cfg.CustomName.IndexOf("2.4G", StringComparison.OrdinalIgnoreCase) >= 0);
+                                                    (existDev.Brand == "MCHOSE" && cfg.CustomName.IndexOf("2.4G", StringComparison.OrdinalIgnoreCase) >= 0) || (existDev.Brand == "Sony" && cfg.CustomName.IndexOf("INZONE", StringComparison.OrdinalIgnoreCase) >= 0);
                             if (keepOfficialName)
                             {
                                 cfg.CustomName = existDev.DeviceName;

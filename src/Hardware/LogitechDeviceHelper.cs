@@ -255,7 +255,7 @@ public static class LogitechDeviceHelper
         return (HasValidHardwareReading && CachedBatteryPercent > 0) ? CachedBatteryPercent : -1;
     }
 
-    private static byte[] SendAndReceive(IntPtr handle, IntPtr hEvent, byte[] tx, int inLen, int timeoutMs, int outLen = 0)
+    private static byte[] SendAndReceive(IntPtr handle, IntPtr hEvent, byte[] tx, int inLen, int timeoutMs, int outLen = 0, byte matchDevIdx = 0xFF, byte matchFeatIdx = 0xFF, byte matchSwid = 0xFF)
     {
         if (handle == IntPtr.Zero || handle == new IntPtr(-1)) return null;
 
@@ -268,7 +268,7 @@ public static class LogitechDeviceHelper
 
         // Drain pending reports
         byte[] drain = new byte[inLen];
-        while (true)
+        for (int i = 0; i < 5; i++)
         {
             OVERLAPPED dOl = new OVERLAPPED();
             dOl.hEvent = hEvent;
@@ -304,28 +304,46 @@ public static class LogitechDeviceHelper
             }
         }
 
-        // Read response
-        byte[] rx = new byte[inLen];
-        OVERLAPPED rOl = new OVERLAPPED();
-        rOl.hEvent = hEvent;
-        uint rxRead = 0;
-        bool rOk = ReadFile(handle, rx, (uint)rx.Length, out rxRead, ref rOl);
-        if (!rOk && Marshal.GetLastWin32Error() == 997)
+        // Read response with deadline
+        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (DateTime.UtcNow < deadline)
         {
-            if (WaitForSingleObject(hEvent, (uint)timeoutMs) == WAIT_OBJECT_0)
+            int remainingMs = (int)(deadline - DateTime.UtcNow).TotalMilliseconds;
+            if (remainingMs <= 0) break;
+
+            byte[] rx = new byte[inLen];
+            OVERLAPPED rOl = new OVERLAPPED();
+            rOl.hEvent = hEvent;
+            uint rxRead = 0;
+            bool rOk = ReadFile(handle, rx, (uint)rx.Length, out rxRead, ref rOl);
+            if (!rOk && Marshal.GetLastWin32Error() == 997)
             {
-                GetOverlappedResult(handle, ref rOl, out rxRead, false);
+                if (WaitForSingleObject(hEvent, (uint)remainingMs) == WAIT_OBJECT_0)
+                {
+                    GetOverlappedResult(handle, ref rOl, out rxRead, false);
+                }
+                else
+                {
+                    CancelIo(handle);
+                    return null;
+                }
+            }
+
+            if (rxRead > 0)
+            {
+                if (matchDevIdx != 0xFF)
+                {
+                    if (rx.Length > 1 && rx[1] == matchDevIdx)
+                    {
+                        if (rx.Length > 2 && rx[2] == 0xFF) return null; // Error frame
+                        if (matchFeatIdx != 0xFF && rx.Length > 2 && rx[2] != matchFeatIdx) continue;
+                        if (matchSwid != 0xFF && rx.Length > 3 && (rx[3] & 0x0F) != (matchSwid & 0x0F)) continue;
+                        return rx;
+                    }
+                    continue;
+                }
                 return rx;
             }
-            else
-            {
-                CancelIo(handle);
-                return null;
-            }
-        }
-        else if (rOk)
-        {
-            return rx;
         }
 
         return null;
@@ -346,7 +364,6 @@ public static class LogitechDeviceHelper
             case 0x40B5: return "Logitech G PRO X SUPERLIGHT 2C (GPW 4代)";
             case 0xC0B5: return "Logitech G PRO X SUPERLIGHT 2C (GPW 4代 有线模式)";
             // GPW 3代 (GPX 2 / PRO X SUPERLIGHT 2 / DEX)
-            case 0xC547:
             case 0x4093: return "Logitech G PRO X SUPERLIGHT 2";
             case 0xC098: return "Logitech G PRO X SUPERLIGHT 2 (有线模式)";
             case 0x4099: return "Logitech G PRO X SUPERLIGHT 2 DEX";
@@ -411,7 +428,7 @@ public static class LogitechDeviceHelper
 
         // Receiver defaults
         if (pid == 0xC54F) return "Logitech G PRO X3 SUPERSTRIKE 8K 接收器";
-        if (pid == 0xC547) return "Logitech G PRO X SUPERLIGHT 2 (Lightspeed)";
+        if (pid == 0xC547) return "Logitech Lightspeed 游戏无线接收器 (0xC547)";
         if (pid == 0xC548) return "Logitech G PRO X SUPERLIGHT 2 4K/8K 接收器";
         if (pid == 0xC539) return "Logitech Lightspeed 游戏无线接收器";
         if (pid == 0xC53A) return "Logitech POWERPLAY 无线充电系统";
@@ -436,12 +453,24 @@ public static class LogitechDeviceHelper
         return DeviceCategory.Mouse;
     }
 
+    private class LogitechRawEndpoint
+    {
+        public string DevicePath;
+        public int VendorId;
+        public int ProductId;
+        public string ProductString;
+        public int InputReportByteLength;
+        public int OutputReportByteLength;
+        public ushort UsagePage;
+        public ushort Usage;
+    }
+
     public static List<MouseBatteryInfo> QueryAllLogitechDevices()
     {
         lock (hidLock)
         {
             List<MouseBatteryInfo> results = new List<MouseBatteryInfo>();
-            HashSet<string> processedDevices = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            List<LogitechRawEndpoint> rawEndpoints = new List<LogitechRawEndpoint>();
 
             Guid hidGuid;
             HidD_GetHidGuid(out hidGuid);
@@ -471,11 +500,11 @@ public static class LogitechDeviceHelper
                         {
                             IntPtr handle = CreateFile(
                                 devicePath,
-                                GENERIC_READ | GENERIC_WRITE,
+                                0,
                                 FILE_SHARE_READ | FILE_SHARE_WRITE,
                                 IntPtr.Zero,
                                 OPEN_EXISTING,
-                                FILE_FLAG_OVERLAPPED,
+                                0,
                                 IntPtr.Zero);
 
                             if (handle != IntPtr.Zero && handle.ToInt64() != -1)
@@ -508,471 +537,21 @@ public static class LogitechDeviceHelper
                                         HidP_GetCaps(preparsed, out caps);
                                         HidD_FreePreparsedData(preparsed);
 
-                                        // Logitech HID++ endpoint detection:
-                                        // UsagePage == 0xFF00 || UsagePage == 0xFF43, InputReportByteLength >= 7
                                         bool isHidppEndpoint = (caps.UsagePage == 0xFF00 || caps.UsagePage == 0xFF43) && 
                                                                (caps.InputReportByteLength >= 7 && caps.OutputReportByteLength >= 7);
 
                                         if (isHidppEndpoint)
                                         {
-                                            string devKey = foundVid.ToString("X4") + ":" + foundPid.ToString("X4");
-                                            if (!processedDevices.Contains(devKey))
-                                            {
-                                                processedDevices.Add(devKey);
-
-                                                IntPtr hEvent = CreateEvent(IntPtr.Zero, true, false, null);
-                                                if (hEvent != IntPtr.Zero)
-                                                {
-                                                    try
-                                                    {
-                                                        // Check target device slots on this receiver/connection:
-                                                        // index 0xFF (wired), index 0x01..0x06 (paired wireless mouse/keyboard on Lightspeed, Unifying, Bolt)
-                                                        bool isDongle = (foundPid == 0xC547 || foundPid == 0xC539 || foundPid == 0xC53A || 
-                                                                         foundPid == 0xC545 || foundPid == 0xC548 || foundPid == 0xC54F || 
-                                                                         foundPid == 0xC52B || foundPid == 0xC534 || foundPid == 0xC52F || 
-                                                                         foundPid == 0xC542 || (foundPid >= 0xC500 && foundPid <= 0xC5FF));
-                                                        byte[] targetIndices = isDongle 
-                                                            ? ((foundPid == 0xC52B || foundPid == 0xC542) ? new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06 } : new byte[] { 0x01, 0x02, 0x03, 0x04 }) 
-                                                            : new byte[] { 0xFF, 0x00, 0x01 };
-
-                                                        foreach (byte devIdx in targetIndices)
-                                                        {
-                                                            bool deviceOnline = false;
-                                                            string detectedName = null;
-                                                            int batteryPercent = -1;
-                                                            bool isCharging = false;
-                                                            int detectedPid = foundPid;
-
-                                                            // 1. HID++ 2.0 Ping: Feature 0x0000 ROOT, Func 0x00, ping 0x5A
-                                                            byte[] txPing = new byte[20];
-                                                            txPing[0] = 0x11; // Long report
-                                                            txPing[1] = devIdx;
-                                                            txPing[2] = 0x00; // Feature 0x0000
-                                                            txPing[3] = 0x00; // Func 0 (Ping)
-                                                            txPing[4] = 0x00;
-                                                            txPing[5] = 0x00;
-                                                            txPing[6] = 0x5A; // Ping token
-
-                                                            byte[] rxPing = SendAndReceive(handle, hEvent, txPing, caps.InputReportByteLength, 350);
-                                                            if (rxPing != null && rxPing.Length >= 7 && rxPing[6] == 0x5A)
-                                                            {
-                                                                deviceOnline = true;
-                                                            }
-                                                            else
-                                                            {
-                                                                // Try Short Report ping (Report ID 0x10)
-                                                                byte[] txShortPing = new byte[7] { 0x10, devIdx, 0x00, 0x00, 0x00, 0x00, 0x5A };
-                                                                byte[] rxShortPing = SendAndReceive(handle, hEvent, txShortPing, caps.InputReportByteLength, 250);
-                                                                if (rxShortPing != null && rxShortPing.Length >= 7 && rxShortPing[6] == 0x5A)
-                                                                {
-                                                                    deviceOnline = true;
-                                                                }
-                                                            }
-
-                                                            // 2. Discover Features if online
-                                                            int hardwareDpi = -1;
-                                                            int hardwareDpiY = -1;
-                                                            byte extDpiFeatIdx = 0;
-                                                            byte dpiFeatIdx = 0;
-                                                            byte extRateFeatIdx = 0;
-                                                            byte rateFeatIdx = 0;
-                                                            int detectedRate = 1000;
-                                                            int[] supportedRates = new int[] { 1000, 2000, 4000, 8000 };
-                                                            if (deviceOnline)
-                                                            {
-                                                                // Feature 0x0005: Device Name Type
-                                                                byte[] txFeatName = new byte[20];
-                                                                txFeatName[0] = 0x11;
-                                                                txFeatName[1] = devIdx;
-                                                                txFeatName[2] = 0x00; // Root feature
-                                                                txFeatName[3] = 0x00; // getFeature
-                                                                txFeatName[4] = 0x00;
-                                                                txFeatName[5] = 0x05; // Feature ID: 0x0005
-                                                                byte[] rxFeatName = SendAndReceive(handle, hEvent, txFeatName, caps.InputReportByteLength, 250);
-                                                                if (rxFeatName != null && rxFeatName.Length >= 5 && rxFeatName[4] > 0)
-                                                                {
-                                                                    byte nameFeatIdx = rxFeatName[4];
-                                                                    // Get Name Count
-                                                                    byte[] txNameCount = new byte[20];
-                                                                    txNameCount[0] = 0x11;
-                                                                    txNameCount[1] = devIdx;
-                                                                    txNameCount[2] = nameFeatIdx;
-                                                                    txNameCount[3] = 0x00; // Func 0: getCount
-                                                                    byte[] rxNameCount = SendAndReceive(handle, hEvent, txNameCount, caps.InputReportByteLength, 200);
-                                                                    if (rxNameCount != null && rxNameCount.Length >= 5 && rxNameCount[4] > 0)
-                                                                    {
-                                                                        int nameLen = rxNameCount[4];
-                                                                        // Get Name String (Func 1: 0x10)
-                                                                        byte[] txGetName = new byte[20];
-                                                                        txGetName[0] = 0x11;
-                                                                        txGetName[1] = devIdx;
-                                                                        txGetName[2] = nameFeatIdx;
-                                                                        txGetName[3] = 0x10; // Func 1: getName
-                                                                        txGetName[4] = 0x00;
-                                                                        byte[] rxGetName = SendAndReceive(handle, hEvent, txGetName, caps.InputReportByteLength, 250);
-                                                                        if (rxGetName != null && rxGetName.Length > 5)
-                                                                        {
-                                                                            StringBuilder nsb = new StringBuilder();
-                                                                            for (int c = 5; c < rxGetName.Length && (c - 5) < nameLen; c++)
-                                                                            {
-                                                                                if (rxGetName[c] == 0) break;
-                                                                                nsb.Append((char)rxGetName[c]);
-                                                                            }
-                                                                            string str = nsb.ToString().Trim();
-                                                                            if (str.Length > 2) detectedName = str;
-                                                                        }
-                                                                    }
-                                                                }
-
-                                                                // Feature 0x1004: Unified Battery
-                                                                byte[] txFeat1004 = new byte[20];
-                                                                txFeat1004[0] = 0x11;
-                                                                txFeat1004[1] = devIdx;
-                                                                txFeat1004[2] = 0x00;
-                                                                txFeat1004[3] = 0x00;
-                                                                txFeat1004[4] = 0x10;
-                                                                txFeat1004[5] = 0x04; // 0x1004
-                                                                byte[] rxFeat1004 = SendAndReceive(handle, hEvent, txFeat1004, caps.InputReportByteLength, 250);
-                                                                if (rxFeat1004 != null && rxFeat1004.Length >= 5 && rxFeat1004[4] > 0)
-                                                                {
-                                                                    byte batFeatIdx = rxFeat1004[4];
-                                                                    // Call getBatteryStatus (Func 1: 0x10)
-                                                                    byte[] txBat = new byte[20];
-                                                                    txBat[0] = 0x11;
-                                                                    txBat[1] = devIdx;
-                                                                    txBat[2] = batFeatIdx;
-                                                                    txBat[3] = 0x10; // Func 1
-                                                                    byte[] rxBat = SendAndReceive(handle, hEvent, txBat, caps.InputReportByteLength, 300);
-                                                                    if (rxBat != null && rxBat.Length > 5)
-                                                                    {
-                                                                        int pct = rxBat[4];
-                                                                        if (pct >= 0 && pct <= 100)
-                                                                        {
-                                                                            batteryPercent = pct;
-                                                                            isCharging = (rxBat[5] == 1);
-                                                                        }
-                                                                    }
-                                                                }
-
-                                                                // Feature 0x1000: Standard Battery Status fallback
-                                                                if (batteryPercent < 0)
-                                                                {
-                                                                    byte[] txFeat1000 = new byte[20];
-                                                                    txFeat1000[0] = 0x11;
-                                                                    txFeat1000[1] = devIdx;
-                                                                    txFeat1000[2] = 0x00;
-                                                                    txFeat1000[3] = 0x00;
-                                                                    txFeat1000[4] = 0x10;
-                                                                    txFeat1000[5] = 0x00; // 0x1000
-                                                                    byte[] rxFeat1000 = SendAndReceive(handle, hEvent, txFeat1000, caps.InputReportByteLength, 250);
-                                                                    if (rxFeat1000 != null && rxFeat1000.Length >= 5 && rxFeat1000[4] > 0)
-                                                                    {
-                                                                        byte batFeatIdx = rxFeat1000[4];
-                                                                        // Call getBatteryLevelStatus (Func 0: 0x00)
-                                                                        byte[] txBat = new byte[20];
-                                                                        txBat[0] = 0x11;
-                                                                        txBat[1] = devIdx;
-                                                                        txBat[2] = batFeatIdx;
-                                                                        txBat[3] = 0x00; // Func 0
-                                                                        byte[] rxBat = SendAndReceive(handle, hEvent, txBat, caps.InputReportByteLength, 300);
-                                                                        if (rxBat != null && rxBat.Length >= 5)
-                                                                        {
-                                                                            int pct = rxBat[4];
-                                                                            if (pct >= 0 && pct <= 100)
-                                                                            {
-                                                                                batteryPercent = pct;
-                                                                                if (rxBat.Length > 6) isCharging = (rxBat[6] == 1);
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                }
-
-                                                                // Feature 0x1001: Battery Voltage fallback (GPW older firmwares)
-                                                                if (batteryPercent < 0)
-                                                                {
-                                                                    byte[] txFeat1001 = new byte[20];
-                                                                    txFeat1001[0] = 0x11;
-                                                                    txFeat1001[1] = devIdx;
-                                                                    txFeat1001[2] = 0x00;
-                                                                    txFeat1001[3] = 0x00;
-                                                                    txFeat1001[4] = 0x10;
-                                                                    txFeat1001[5] = 0x01; // 0x1001
-                                                                    byte[] rxFeat1001 = SendAndReceive(handle, hEvent, txFeat1001, caps.InputReportByteLength, 250, caps.OutputReportByteLength);
-                                                                    if (rxFeat1001 != null && rxFeat1001.Length >= 5 && rxFeat1001[4] > 0)
-                                                                    {
-                                                                        byte batFeatIdx = rxFeat1001[4];
-                                                                        byte[] txBat = new byte[20];
-                                                                        txBat[0] = 0x11;
-                                                                        txBat[1] = devIdx;
-                                                                        txBat[2] = batFeatIdx;
-                                                                        txBat[3] = 0x00;
-                                                                        byte[] rxBat = SendAndReceive(handle, hEvent, txBat, caps.InputReportByteLength, 300, caps.OutputReportByteLength);
-                                                                        if (rxBat != null && rxBat.Length >= 6)
-                                                                        {
-                                                                            int vMv = (rxBat[4] << 8) | rxBat[5];
-                                                                            if (rxBat.Length > 6) isCharging = (rxBat[6] == 1 || rxBat[6] == 2);
-                                                                            if (vMv > 3000 && vMv < 4500)
-                                                                            {
-                                                                                int pct = (int)((vMv - 3600) * 100 / (4150 - 3600));
-                                                                                batteryPercent = Math.Max(1, Math.Min(100, pct));
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                }
-
-                                                                // HID++ 1.0 Sub-ID 0x0D Fallback
-                                                                if (batteryPercent < 0)
-                                                                {
-                                                                    byte[] txHidpp1 = new byte[7] { 0x10, devIdx, 0x0D, 0x00, 0x00, 0x00, 0x00 };
-                                                                    byte[] rxHidpp1 = SendAndReceive(handle, hEvent, txHidpp1, caps.InputReportByteLength, 250);
-                                                                    if (rxHidpp1 != null && rxHidpp1.Length >= 5 && rxHidpp1[2] == 0x0D)
-                                                                    {
-                                                                        int pct = rxHidpp1[3];
-                                                                        if (pct >= 0 && pct <= 100)
-                                                                        {
-                                                                            batteryPercent = pct;
-                                                                            isCharging = (rxHidpp1[4] == 1);
-                                                                        }
-                                                                    }
-                                                                }
-
-                                                                hardwareDpiY = -1;
-                                                                extDpiFeatIdx = 0;
-                                                                dpiFeatIdx = 0;
-                                                                extRateFeatIdx = 0;
-                                                                rateFeatIdx = 0;
-                                                                detectedRate = 1000;
-                                                                supportedRates = new int[] { 1000, 2000, 4000, 8000 };
-
-                                                                // Feature 0x2202: Extended Adjustable DPI (XY independent)
-                                                                byte[] txFeat2202 = new byte[20];
-                                                                txFeat2202[0] = 0x11;
-                                                                txFeat2202[1] = devIdx;
-                                                                txFeat2202[2] = 0x00;
-                                                                txFeat2202[3] = 0x00;
-                                                                txFeat2202[4] = 0x22;
-                                                                txFeat2202[5] = 0x02; // 0x2202
-                                                                byte[] rxFeat2202 = SendAndReceive(handle, hEvent, txFeat2202, caps.InputReportByteLength, 200);
-                                                                if (rxFeat2202 != null && rxFeat2202.Length >= 5 && rxFeat2202[4] > 0)
-                                                                {
-                                                                    extDpiFeatIdx = rxFeat2202[4];
-                                                                    // Func 5: read extended DPI (0x50)
-                                                                    byte[] txGetExtDpi = new byte[20];
-                                                                    txGetExtDpi[0] = 0x11;
-                                                                    txGetExtDpi[1] = devIdx;
-                                                                    txGetExtDpi[2] = extDpiFeatIdx;
-                                                                    txGetExtDpi[3] = 0x50; // Func 5: read
-                                                                    txGetExtDpi[4] = 0x00; // Sensor 0
-                                                                    byte[] rxGetExtDpi = SendAndReceive(handle, hEvent, txGetExtDpi, caps.InputReportByteLength, 200);
-                                                                    if (rxGetExtDpi != null && rxGetExtDpi.Length >= 9)
-                                                                    {
-                                                                        int dx = (rxGetExtDpi[5] << 8) | rxGetExtDpi[6];
-                                                                        int dy = (rxGetExtDpi[7] << 8) | rxGetExtDpi[8];
-                                                                        if (dx >= 50 && dx <= 50000) hardwareDpi = dx;
-                                                                        if (dy >= 50 && dy <= 50000) hardwareDpiY = dy;
-                                                                    }
-                                                                }
-
-                                                                // Feature 0x2201: Adjustable DPI (Unified)
-                                                                byte[] txFeat2201 = new byte[20];
-                                                                txFeat2201[0] = 0x11;
-                                                                txFeat2201[1] = devIdx;
-                                                                txFeat2201[2] = 0x00;
-                                                                txFeat2201[3] = 0x00;
-                                                                txFeat2201[4] = 0x22;
-                                                                txFeat2201[5] = 0x01; // 0x2201
-                                                                byte[] rxFeat2201 = SendAndReceive(handle, hEvent, txFeat2201, caps.InputReportByteLength, 200);
-                                                                if (rxFeat2201 != null && rxFeat2201.Length >= 5 && rxFeat2201[4] > 0)
-                                                                {
-                                                                    dpiFeatIdx = rxFeat2201[4];
-                                                                    if (hardwareDpi <= 0)
-                                                                    {
-                                                                        // Func 1: getSensorDpi (0x10)
-                                                                        byte[] txGetDpi = new byte[20];
-                                                                        txGetDpi[0] = 0x11;
-                                                                        txGetDpi[1] = devIdx;
-                                                                        txGetDpi[2] = dpiFeatIdx;
-                                                                        txGetDpi[3] = 0x10; // Func 1: getSensorDpi
-                                                                        txGetDpi[4] = 0x00; // Sensor 0
-                                                                        byte[] rxGetDpi = SendAndReceive(handle, hEvent, txGetDpi, caps.InputReportByteLength, 250);
-                                                                        if (rxGetDpi != null && rxGetDpi.Length >= 7)
-                                                                        {
-                                                                            int dVal = (rxGetDpi[5] << 8) | rxGetDpi[6];
-                                                                            if (dVal >= 50 && dVal <= 50000)
-                                                                            {
-                                                                                hardwareDpi = dVal;
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                }
-
-                                                                // Feature 0x8061: Extended Adjustable Report Rate (GPX 2, GPW 5, modern 8K/4K/2K/1K)
-                                                                byte[] txFeat8061 = new byte[20];
-                                                                txFeat8061[0] = 0x11;
-                                                                txFeat8061[1] = devIdx;
-                                                                txFeat8061[2] = 0x00;
-                                                                txFeat8061[3] = 0x00;
-                                                                txFeat8061[4] = 0x80;
-                                                                txFeat8061[5] = 0x61; // 0x8061
-                                                                byte[] rxFeat8061 = SendAndReceive(handle, hEvent, txFeat8061, caps.InputReportByteLength, 200);
-                                                                if (rxFeat8061 != null && rxFeat8061.Length >= 5 && rxFeat8061[4] > 0)
-                                                                {
-                                                                    extRateFeatIdx = rxFeat8061[4];
-                                                                    // Func 2: getReportRate (0x20)
-                                                                    byte[] txGetRate = new byte[20];
-                                                                    txGetRate[0] = 0x11;
-                                                                    txGetRate[1] = devIdx;
-                                                                    txGetRate[2] = extRateFeatIdx;
-                                                                    txGetRate[3] = 0x20;
-                                                                    byte[] rxGetRate = SendAndReceive(handle, hEvent, txGetRate, caps.InputReportByteLength, 200);
-                                                                    if (rxGetRate != null && rxGetRate.Length >= 5)
-                                                                    {
-                                                                        int code = rxGetRate[4];
-                                                                        if (code == 6) detectedRate = 8000;
-                                                                        else if (code == 5) detectedRate = 4000;
-                                                                        else if (code == 4) detectedRate = 2000;
-                                                                        else if (code == 3) detectedRate = 1000;
-                                                                        else if (code == 2) detectedRate = 500;
-                                                                        else if (code == 1) detectedRate = 250;
-                                                                        else if (code == 0) detectedRate = 125;
-                                                                    }
-                                                                    supportedRates = new int[] { 125, 250, 500, 1000, 2000, 4000, 8000 };
-                                                                }
-                                                                else
-                                                                {
-                                                                    // Feature 0x8060: Standard Adjustable Report Rate (GPW 1, GPX 1, G502)
-                                                                    byte[] txFeat8060 = new byte[20];
-                                                                    txFeat8060[0] = 0x11;
-                                                                    txFeat8060[1] = devIdx;
-                                                                    txFeat8060[2] = 0x00;
-                                                                    txFeat8060[3] = 0x00;
-                                                                    txFeat8060[4] = 0x80;
-                                                                    txFeat8060[5] = 0x60; // 0x8060
-                                                                    byte[] rxFeat8060 = SendAndReceive(handle, hEvent, txFeat8060, caps.InputReportByteLength, 200);
-                                                                    if (rxFeat8060 != null && rxFeat8060.Length >= 5 && rxFeat8060[4] > 0)
-                                                                    {
-                                                                        rateFeatIdx = rxFeat8060[4];
-                                                                        // Func 1: getReportRate (0x10)
-                                                                        byte[] txGetRate = new byte[20];
-                                                                        txGetRate[0] = 0x11;
-                                                                        txGetRate[1] = devIdx;
-                                                                        txGetRate[2] = rateFeatIdx;
-                                                                        txGetRate[3] = 0x10;
-                                                                        byte[] rxGetRate = SendAndReceive(handle, hEvent, txGetRate, caps.InputReportByteLength, 200);
-                                                                        if (rxGetRate != null && rxGetRate.Length >= 5)
-                                                                        {
-                                                                            int ms = rxGetRate[4];
-                                                                            if (ms == 1) detectedRate = 1000;
-                                                                            else if (ms == 2) detectedRate = 500;
-                                                                            else if (ms == 4) detectedRate = 250;
-                                                                            else if (ms == 8) detectedRate = 125;
-                                                                        }
-                                                                        supportedRates = new int[] { 125, 250, 500, 1000 };
-                                                                    }
-                                                                }
-                                                            }
-
-                                                            // Determine Device Name and ID
-                                                            string finalName = !string.IsNullOrEmpty(detectedName) ? detectedName : GetModelName(detectedPid, foundName);
-                                                            DeviceCategory cat = DetectCategory(detectedPid, finalName);
-                                                            string deviceId = "Logitech:" + foundVid.ToString("X4") + ":" + detectedPid.ToString("X4") + (devIdx != 0xFF ? (":" + devIdx) : "");
-
-                                                            // Register active endpoint for DPI and Polling Rate control
-                                                            if (deviceOnline)
-                                                            {
-                                                                LogitechEndpoint ep = new LogitechEndpoint
-                                                                {
-                                                                    DeviceId = deviceId,
-                                                                    DevicePath = devicePath,
-                                                                    DevIndex = devIdx,
-                                                                    InputReportLength = caps.InputReportByteLength,
-                                                                    OutputReportLength = caps.OutputReportByteLength,
-                                                                    CurrentDpi = (hardwareDpi > 0) ? hardwareDpi : CachedDpi,
-                                                                    CurrentDpiY = (hardwareDpiY > 0) ? hardwareDpiY : ((hardwareDpi > 0) ? hardwareDpi : CachedDpiY),
-                                                                    PollingRate = (detectedRate > 0) ? detectedRate : CachedPollingRate,
-                                                                    DpiFeatureIndex = dpiFeatIdx,
-                                                                    ExtDpiFeatureIndex = extDpiFeatIdx,
-                                                                    RateFeatureIndex = rateFeatIdx,
-                                                                    ExtRateFeatureIndex = extRateFeatIdx,
-                                                                    SupportedRates = supportedRates,
-                                                                    LastSeen = DateTime.Now
-                                                                };
-                                                                activeEndpoints[deviceId] = ep;
-                                                            }
-
-                                                            // If device was online and battery read, update cache
-                                                            if (batteryPercent >= 0)
-                                                            {
-                                                                CachedBatteryPercent = batteryPercent;
-                                                                CachedIsCharging = isCharging;
-                                                                CachedLastUpdated = DateTime.Now;
-                                                                CachedDeviceName = finalName;
-                                                                HasValidHardwareReading = true;
-                                                                deviceBatteryCache[deviceId] = batteryPercent;
-                                                                SaveHardwareCache();
-                                                            }
-
-                                                            int displayBattery = (batteryPercent >= 0) ? batteryPercent : GetCachedBatteryForDevice(deviceId);
-                                                            bool displayCharging = (batteryPercent >= 0) ? isCharging : CachedIsCharging;
-
-                                                            // Only add if device is online or if dongle is present
-                                                            // For dongle receiver, even if mouse is sleeping, provide dongle standby status
-                                                            // isDongle determined above
-
-
-
-
-                                                            if (deviceOnline || isDongle)
-                                                            {
-                                                                int finalDpiX = (hardwareDpi > 0) ? hardwareDpi : CachedDpi;
-                                                                int finalDpiY = (hardwareDpiY > 0) ? hardwareDpiY : finalDpiX;
-                                                                int finalRate = (detectedRate > 0) ? detectedRate : CachedPollingRate;
-
-                                                                MouseBatteryInfo info = new MouseBatteryInfo
-                                                                {
-                                                                    DeviceId = deviceId,
-                                                                    HardwareFingerprint = deviceId,
-                                                                    Brand = "Logitech",
-                                                                    DeviceName = finalName,
-                                                                    Category = cat,
-                                                                    Transport = isDongle ? "Lightspeed 无线" : "USB 有线",
-                                                                    IsConnected = true,
-                                                                    IsSleeping = !deviceOnline,
-                                                                    IsDonglePresent = true,
-                                                                    IsCustom = false,
-                                                                    BatteryPercent = displayBattery,
-                                                                    ExactBatteryPercent = displayBattery,
-                                                                    IsCharging = displayCharging,
-                                                                    LastUpdated = (batteryPercent >= 0) ? DateTime.Now : (CachedLastUpdated != DateTime.MinValue ? CachedLastUpdated : DateTime.Now),
-                                                                    Dpi = finalDpiX,
-                                                                    DpiY = finalDpiY,
-                                                                    IsXyIndependent = (finalDpiY != finalDpiX),
-                                                                    DpiStage = 2,
-                                                                    DpiStageCount = 5,
-                                                                    DpiStages = new int[] { 400, 800, 1600, 3200, 6400 },
-                                                                    DpiStagesY = new int[] { 400, 800, 1600, 3200, 6400 },
-                                                                    PollingRate = finalRate,
-                                                                    SupportedPollingRates = supportedRates
-                                                                };
-
-                                                                if (deviceOnline)
-                                                                {
-                                                                    results.Add(info);
-                                                                    if (!isDongle) break;
-                                                                }
-                                                                else if (isDongle && devIdx == 0x01 && results.Count == 0)
-                                                                {
-                                                                    results.Add(info);
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                    finally
-                                                    {
-                                                        CloseHandle(hEvent);
-                                                    }
-                                                }
-                                            }
+                                            LogitechRawEndpoint rep = new LogitechRawEndpoint();
+                                            rep.DevicePath = devicePath;
+                                            rep.VendorId = foundVid;
+                                            rep.ProductId = foundPid;
+                                            rep.ProductString = foundName;
+                                            rep.InputReportByteLength = caps.InputReportByteLength;
+                                            rep.OutputReportByteLength = caps.OutputReportByteLength;
+                                            rep.UsagePage = caps.UsagePage;
+                                            rep.Usage = caps.Usage;
+                                            rawEndpoints.Add(rep);
                                         }
                                     }
                                 }
@@ -990,6 +569,513 @@ public static class LogitechDeviceHelper
             finally
             {
                 SetupDiDestroyDeviceInfoList(devInfo);
+            }
+
+            // Phase 2: Group by (VendorId, ProductId) and select the best endpoint (20-byte HID++ 2.0 preferred)
+            Dictionary<string, List<LogitechRawEndpoint>> groups = new Dictionary<string, List<LogitechRawEndpoint>>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < rawEndpoints.Count; i++)
+            {
+                string key = rawEndpoints[i].VendorId.ToString("X4") + ":" + rawEndpoints[i].ProductId.ToString("X4");
+                if (!groups.ContainsKey(key)) groups[key] = new List<LogitechRawEndpoint>();
+                groups[key].Add(rawEndpoints[i]);
+            }
+
+            foreach (var kvp in groups)
+            {
+                var group = kvp.Value;
+                LogitechRawEndpoint bestEndpoint = null;
+                for (int i = 0; i < group.Count; i++)
+                {
+                    if (group[i].OutputReportByteLength >= 20 && group[i].InputReportByteLength >= 20)
+                    {
+                        bestEndpoint = group[i];
+                        break;
+                    }
+                }
+                if (bestEndpoint == null) bestEndpoint = group[0];
+
+                int foundVid = bestEndpoint.VendorId;
+                int foundPid = bestEndpoint.ProductId;
+                string foundName = bestEndpoint.ProductString;
+
+                IntPtr handle = CreateFile(
+                    bestEndpoint.DevicePath,
+                    GENERIC_READ | GENERIC_WRITE,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE,
+                    IntPtr.Zero,
+                    OPEN_EXISTING,
+                    FILE_FLAG_OVERLAPPED,
+                    IntPtr.Zero);
+
+                if (handle == IntPtr.Zero || handle.ToInt64() == -1) continue;
+
+                try
+                {
+                    IntPtr hEvent = CreateEvent(IntPtr.Zero, true, false, null);
+                    if (hEvent != IntPtr.Zero)
+                    {
+                        try
+                        {
+                            bool isDongle = (foundPid == 0xC547 || foundPid == 0xC539 || foundPid == 0xC53A || 
+                                             foundPid == 0xC545 || foundPid == 0xC548 || foundPid == 0xC54F || 
+                                             foundPid == 0xC52B || foundPid == 0xC534 || foundPid == 0xC52F || 
+                                             foundPid == 0xC542 || (foundPid >= 0xC500 && foundPid <= 0xC5FF));
+
+                            byte[] targetIndices = isDongle 
+                                ? ((foundPid == 0xC52B || foundPid == 0xC542) ? new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06 } : new byte[] { 0x01, 0x02 }) 
+                                : new byte[] { 0xFF };
+
+                            foreach (byte devIdx in targetIndices)
+                            {
+                                bool deviceOnline = false;
+                                string detectedName = null;
+                                int batteryPercent = -1;
+                                bool isCharging = false;
+                                int detectedPid = foundPid;
+
+                                // 1. HID++ 2.0 Ping: Feature 0x0000 ROOT, Func 1 (getProtocolVersion) | SoftwareId 8 = 0x18, ping token 0x5A
+                                byte[] txPing = new byte[20];
+                                txPing[0] = 0x11;
+                                txPing[1] = devIdx;
+                                txPing[2] = 0x00; // Feature 0x0000
+                                txPing[3] = 0x18; // Func 1 (getProtocolVersion) | swid 8
+                                txPing[4] = 0x00;
+                                txPing[5] = 0x00;
+                                txPing[6] = 0x5A; // Ping token
+
+                                byte[] rxPing = SendAndReceive(handle, hEvent, txPing, bestEndpoint.InputReportByteLength, 350, bestEndpoint.OutputReportByteLength, devIdx, 0x00, 0x08);
+                                if (rxPing != null && rxPing.Length >= 7 && rxPing[6] == 0x5A)
+                                {
+                                    deviceOnline = true;
+                                }
+                                else
+                                {
+                                    // Try Short Report ping (Report ID 0x10)
+                                    byte[] txShortPing = new byte[7] { 0x10, devIdx, 0x00, 0x18, 0x00, 0x00, 0x5A };
+                                    byte[] rxShortPing = SendAndReceive(handle, hEvent, txShortPing, bestEndpoint.InputReportByteLength, 250, bestEndpoint.OutputReportByteLength, devIdx, 0x00, 0x08);
+                                    if (rxShortPing != null && rxShortPing.Length >= 7 && rxShortPing[6] == 0x5A)
+                                    {
+                                        deviceOnline = true;
+                                    }
+                                    else
+                                    {
+                                        // Legacy fallback ping with func 0
+                                        byte[] txLegacyPing = new byte[20];
+                                        txLegacyPing[0] = 0x11;
+                                        txLegacyPing[1] = devIdx;
+                                        txLegacyPing[2] = 0x00;
+                                        txLegacyPing[3] = 0x00;
+                                        txLegacyPing[4] = 0x00;
+                                        txLegacyPing[5] = 0x00;
+                                        txLegacyPing[6] = 0x5A;
+                                        byte[] rxLegacyPing = SendAndReceive(handle, hEvent, txLegacyPing, bestEndpoint.InputReportByteLength, 200, bestEndpoint.OutputReportByteLength);
+                                        if (rxLegacyPing != null && rxLegacyPing.Length >= 7 && rxLegacyPing[6] == 0x5A)
+                                        {
+                                            deviceOnline = true;
+                                        }
+                                    }
+                                }
+
+                                // 2. Discover Features if online
+                                int hardwareDpi = -1;
+                                int hardwareDpiY = -1;
+                                byte extDpiFeatIdx = 0;
+                                byte dpiFeatIdx = 0;
+                                byte extRateFeatIdx = 0;
+                                byte rateFeatIdx = 0;
+                                int detectedRate = 1000;
+                                int[] supportedRates = new int[] { 1000, 2000, 4000, 8000 };
+                                if (deviceOnline)
+                                {
+                                    // Feature 0x0005: Device Name Type
+                                    byte[] txFeatName = new byte[20];
+                                    txFeatName[0] = 0x11;
+                                    txFeatName[1] = devIdx;
+                                    txFeatName[2] = 0x00;
+                                    txFeatName[3] = 0x08; // getFeature, swid 8
+                                    txFeatName[4] = 0x00;
+                                    txFeatName[5] = 0x05; // Feature ID: 0x0005
+                                    byte[] rxFeatName = SendAndReceive(handle, hEvent, txFeatName, bestEndpoint.InputReportByteLength, 250, bestEndpoint.OutputReportByteLength, devIdx, 0x00, 0x08);
+                                    if (rxFeatName != null && rxFeatName.Length >= 5 && rxFeatName[4] > 0)
+                                    {
+                                        byte nameFeatIdx = rxFeatName[4];
+                                        byte[] txNameCount = new byte[20];
+                                        txNameCount[0] = 0x11;
+                                        txNameCount[1] = devIdx;
+                                        txNameCount[2] = nameFeatIdx;
+                                        txNameCount[3] = 0x08; // Func 0: getCount, swid 8
+                                        byte[] rxNameCount = SendAndReceive(handle, hEvent, txNameCount, bestEndpoint.InputReportByteLength, 200, bestEndpoint.OutputReportByteLength, devIdx, nameFeatIdx, 0x08);
+                                        if (rxNameCount != null && rxNameCount.Length >= 5 && rxNameCount[4] > 0)
+                                        {
+                                            int nameLen = rxNameCount[4];
+                                            byte[] txGetName = new byte[20];
+                                            txGetName[0] = 0x11;
+                                            txGetName[1] = devIdx;
+                                            txGetName[2] = nameFeatIdx;
+                                            txGetName[3] = 0x18; // Func 1: getName, swid 8
+                                            txGetName[4] = 0x00;
+                                            byte[] rxGetName = SendAndReceive(handle, hEvent, txGetName, bestEndpoint.InputReportByteLength, 250, bestEndpoint.OutputReportByteLength, devIdx, nameFeatIdx, 0x08);
+                                            if (rxGetName != null && rxGetName.Length > 4)
+                                            {
+                                                StringBuilder nsb = new StringBuilder();
+                                                for (int c = 4; c < rxGetName.Length && (c - 4) < nameLen; c++)
+                                                {
+                                                    if (rxGetName[c] == 0) break;
+                                                    if (rxGetName[c] >= 32 && rxGetName[c] <= 126)
+                                                    {
+                                                        nsb.Append((char)rxGetName[c]);
+                                                    }
+                                                }
+                                                string str = nsb.ToString().Trim();
+                                                if (str.Length > 2) detectedName = str;
+                                            }
+                                        }
+                                    }
+
+                                    // Feature 0x1004: Unified Battery
+                                    byte[] txFeat1004 = new byte[20];
+                                    txFeat1004[0] = 0x11;
+                                    txFeat1004[1] = devIdx;
+                                    txFeat1004[2] = 0x00;
+                                    txFeat1004[3] = 0x08; // getFeature, swid 8
+                                    txFeat1004[4] = 0x10;
+                                    txFeat1004[5] = 0x04; // 0x1004
+                                    byte[] rxFeat1004 = SendAndReceive(handle, hEvent, txFeat1004, bestEndpoint.InputReportByteLength, 250, bestEndpoint.OutputReportByteLength, devIdx, 0x00, 0x08);
+                                    if (rxFeat1004 != null && rxFeat1004.Length >= 5 && rxFeat1004[4] > 0)
+                                    {
+                                        byte batFeatIdx = rxFeat1004[4];
+                                        byte[] txBat = new byte[20];
+                                        txBat[0] = 0x11;
+                                        txBat[1] = devIdx;
+                                        txBat[2] = batFeatIdx;
+                                        txBat[3] = 0x18; // Func 1 (0x10) | swid 8
+                                        byte[] rxBat = SendAndReceive(handle, hEvent, txBat, bestEndpoint.InputReportByteLength, 300, bestEndpoint.OutputReportByteLength, devIdx, batFeatIdx, 0x08);
+                                        if (rxBat != null && rxBat.Length > 4)
+                                        {
+                                            int pct = rxBat[4];
+                                            if (pct >= 0 && pct <= 100)
+                                            {
+                                                batteryPercent = pct;
+                                                if (rxBat.Length > 6)
+                                                {
+                                                    isCharging = (rxBat[6] >= 1 && rxBat[6] <= 4) || (rxBat[5] == 1);
+                                                }
+                                                else
+                                                {
+                                                    isCharging = (rxBat[5] == 1);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Feature 0x1000: Standard Battery Status fallback
+                                    if (batteryPercent < 0)
+                                    {
+                                        byte[] txFeat1000 = new byte[20];
+                                        txFeat1000[0] = 0x11;
+                                        txFeat1000[1] = devIdx;
+                                        txFeat1000[2] = 0x00;
+                                        txFeat1000[3] = 0x08;
+                                        txFeat1000[4] = 0x10;
+                                        txFeat1000[5] = 0x00; // 0x1000
+                                        byte[] rxFeat1000 = SendAndReceive(handle, hEvent, txFeat1000, bestEndpoint.InputReportByteLength, 250, bestEndpoint.OutputReportByteLength, devIdx, 0x00, 0x08);
+                                        if (rxFeat1000 != null && rxFeat1000.Length >= 5 && rxFeat1000[4] > 0)
+                                        {
+                                            byte batFeatIdx = rxFeat1000[4];
+                                            byte[] txBat = new byte[20];
+                                            txBat[0] = 0x11;
+                                            txBat[1] = devIdx;
+                                            txBat[2] = batFeatIdx;
+                                            txBat[3] = 0x08; // Func 0, swid 8
+                                            byte[] rxBat = SendAndReceive(handle, hEvent, txBat, bestEndpoint.InputReportByteLength, 300, bestEndpoint.OutputReportByteLength, devIdx, batFeatIdx, 0x08);
+                                            if (rxBat != null && rxBat.Length >= 5)
+                                            {
+                                                int pct = rxBat[4];
+                                                if (pct >= 0 && pct <= 100)
+                                                {
+                                                    batteryPercent = pct;
+                                                    if (rxBat.Length > 6) isCharging = (rxBat[6] == 1);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Feature 0x1001: Battery Voltage fallback (GPW older firmwares)
+                                    if (batteryPercent < 0)
+                                    {
+                                        byte[] txFeat1001 = new byte[20];
+                                        txFeat1001[0] = 0x11;
+                                        txFeat1001[1] = devIdx;
+                                        txFeat1001[2] = 0x00;
+                                        txFeat1001[3] = 0x08;
+                                        txFeat1001[4] = 0x10;
+                                        txFeat1001[5] = 0x01; // 0x1001
+                                        byte[] rxFeat1001 = SendAndReceive(handle, hEvent, txFeat1001, bestEndpoint.InputReportByteLength, 250, bestEndpoint.OutputReportByteLength, devIdx, 0x00, 0x08);
+                                        if (rxFeat1001 != null && rxFeat1001.Length >= 5 && rxFeat1001[4] > 0)
+                                        {
+                                            byte batFeatIdx = rxFeat1001[4];
+                                            byte[] txBat = new byte[20];
+                                            txBat[0] = 0x11;
+                                            txBat[1] = devIdx;
+                                            txBat[2] = batFeatIdx;
+                                            txBat[3] = 0x08;
+                                            byte[] rxBat = SendAndReceive(handle, hEvent, txBat, bestEndpoint.InputReportByteLength, 300, bestEndpoint.OutputReportByteLength, devIdx, batFeatIdx, 0x08);
+                                            if (rxBat != null && rxBat.Length >= 6)
+                                            {
+                                                int vMv = (rxBat[4] << 8) | rxBat[5];
+                                                if (rxBat.Length > 6) isCharging = (rxBat[6] == 1 || rxBat[6] == 2);
+                                                if (vMv > 3000 && vMv < 4500)
+                                                {
+                                                    int pct = (int)((vMv - 3600) * 100 / (4150 - 3600));
+                                                    batteryPercent = Math.Max(1, Math.Min(100, pct));
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // HID++ 1.0 Sub-ID 0x0D Fallback
+                                    if (batteryPercent < 0)
+                                    {
+                                        byte[] txHidpp1 = new byte[7] { 0x10, devIdx, 0x0D, 0x00, 0x00, 0x00, 0x00 };
+                                        byte[] rxHidpp1 = SendAndReceive(handle, hEvent, txHidpp1, bestEndpoint.InputReportByteLength, 250, bestEndpoint.OutputReportByteLength);
+                                        if (rxHidpp1 != null && rxHidpp1.Length >= 5 && rxHidpp1[2] == 0x0D)
+                                        {
+                                            int pct = rxHidpp1[3];
+                                            if (pct >= 0 && pct <= 100)
+                                            {
+                                                batteryPercent = pct;
+                                                isCharging = (rxHidpp1[4] == 1);
+                                            }
+                                        }
+                                    }
+
+                                    hardwareDpiY = -1;
+                                    extDpiFeatIdx = 0;
+                                    dpiFeatIdx = 0;
+                                    extRateFeatIdx = 0;
+                                    rateFeatIdx = 0;
+                                    detectedRate = 1000;
+                                    supportedRates = new int[] { 1000, 2000, 4000, 8000 };
+
+                                    // Feature 0x2202: Extended Adjustable DPI (XY independent)
+                                    byte[] txFeat2202 = new byte[20];
+                                    txFeat2202[0] = 0x11;
+                                    txFeat2202[1] = devIdx;
+                                    txFeat2202[2] = 0x00;
+                                    txFeat2202[3] = 0x08;
+                                    txFeat2202[4] = 0x22;
+                                    txFeat2202[5] = 0x02; // 0x2202
+                                    byte[] rxFeat2202 = SendAndReceive(handle, hEvent, txFeat2202, bestEndpoint.InputReportByteLength, 200, bestEndpoint.OutputReportByteLength, devIdx, 0x00, 0x08);
+                                    if (rxFeat2202 != null && rxFeat2202.Length >= 5 && rxFeat2202[4] > 0)
+                                    {
+                                        extDpiFeatIdx = rxFeat2202[4];
+                                        byte[] txGetExtDpi = new byte[20];
+                                        txGetExtDpi[0] = 0x11;
+                                        txGetExtDpi[1] = devIdx;
+                                        txGetExtDpi[2] = extDpiFeatIdx;
+                                        txGetExtDpi[3] = 0x58; // Func 5 (0x50) | swid 8 = 0x58
+                                        txGetExtDpi[4] = 0x00; // Sensor 0
+                                        byte[] rxGetExtDpi = SendAndReceive(handle, hEvent, txGetExtDpi, bestEndpoint.InputReportByteLength, 200, bestEndpoint.OutputReportByteLength, devIdx, extDpiFeatIdx, 0x08);
+                                        if (rxGetExtDpi != null && rxGetExtDpi.Length >= 9)
+                                        {
+                                            int dx = (rxGetExtDpi[5] << 8) | rxGetExtDpi[6];
+                                            int dy = (rxGetExtDpi[7] << 8) | rxGetExtDpi[8];
+                                            if (dx >= 50 && dx <= 50000) hardwareDpi = dx;
+                                            if (dy >= 50 && dy <= 50000) hardwareDpiY = dy;
+                                        }
+                                    }
+
+                                    // Feature 0x2201: Adjustable DPI (Unified)
+                                    byte[] txFeat2201 = new byte[20];
+                                    txFeat2201[0] = 0x11;
+                                    txFeat2201[1] = devIdx;
+                                    txFeat2201[2] = 0x00;
+                                    txFeat2201[3] = 0x08;
+                                    txFeat2201[4] = 0x22;
+                                    txFeat2201[5] = 0x01; // 0x2201
+                                    byte[] rxFeat2201 = SendAndReceive(handle, hEvent, txFeat2201, bestEndpoint.InputReportByteLength, 200, bestEndpoint.OutputReportByteLength, devIdx, 0x00, 0x08);
+                                    if (rxFeat2201 != null && rxFeat2201.Length >= 5 && rxFeat2201[4] > 0)
+                                    {
+                                        dpiFeatIdx = rxFeat2201[4];
+                                        if (hardwareDpi <= 0)
+                                        {
+                                            byte[] txGetDpi = new byte[20];
+                                            txGetDpi[0] = 0x11;
+                                            txGetDpi[1] = devIdx;
+                                            txGetDpi[2] = dpiFeatIdx;
+                                            txGetDpi[3] = 0x18; // Func 1 (0x10) | swid 8
+                                            txGetDpi[4] = 0x00; // Sensor 0
+                                            byte[] rxGetDpi = SendAndReceive(handle, hEvent, txGetDpi, bestEndpoint.InputReportByteLength, 250, bestEndpoint.OutputReportByteLength, devIdx, dpiFeatIdx, 0x08);
+                                            if (rxGetDpi != null && rxGetDpi.Length >= 7)
+                                            {
+                                                int dVal = (rxGetDpi[5] << 8) | rxGetDpi[6];
+                                                if (dVal >= 50 && dVal <= 50000)
+                                                {
+                                                    hardwareDpi = dVal;
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Feature 0x8061: Extended Adjustable Report Rate
+                                    byte[] txFeat8061 = new byte[20];
+                                    txFeat8061[0] = 0x11;
+                                    txFeat8061[1] = devIdx;
+                                    txFeat8061[2] = 0x00;
+                                    txFeat8061[3] = 0x08;
+                                    txFeat8061[4] = 0x80;
+                                    txFeat8061[5] = 0x61; // 0x8061
+                                    byte[] rxFeat8061 = SendAndReceive(handle, hEvent, txFeat8061, bestEndpoint.InputReportByteLength, 200, bestEndpoint.OutputReportByteLength, devIdx, 0x00, 0x08);
+                                    if (rxFeat8061 != null && rxFeat8061.Length >= 5 && rxFeat8061[4] > 0)
+                                    {
+                                        extRateFeatIdx = rxFeat8061[4];
+                                        byte[] txGetRate = new byte[20];
+                                        txGetRate[0] = 0x11;
+                                        txGetRate[1] = devIdx;
+                                        txGetRate[2] = extRateFeatIdx;
+                                        txGetRate[3] = 0x28; // Func 2 (0x20) | swid 8
+                                        byte[] rxGetRate = SendAndReceive(handle, hEvent, txGetRate, bestEndpoint.InputReportByteLength, 200, bestEndpoint.OutputReportByteLength, devIdx, extRateFeatIdx, 0x08);
+                                        if (rxGetRate != null && rxGetRate.Length >= 5)
+                                        {
+                                            int code = rxGetRate[4];
+                                            if (code == 6) detectedRate = 8000;
+                                            else if (code == 5) detectedRate = 4000;
+                                            else if (code == 4) detectedRate = 2000;
+                                            else if (code == 3) detectedRate = 1000;
+                                            else if (code == 2) detectedRate = 500;
+                                            else if (code == 1) detectedRate = 250;
+                                            else if (code == 0) detectedRate = 125;
+                                        }
+                                        supportedRates = new int[] { 125, 250, 500, 1000, 2000, 4000, 8000 };
+                                    }
+                                    else
+                                    {
+                                        // Feature 0x8060: Standard Adjustable Report Rate
+                                        byte[] txFeat8060 = new byte[20];
+                                        txFeat8060[0] = 0x11;
+                                        txFeat8060[1] = devIdx;
+                                        txFeat8060[2] = 0x00;
+                                        txFeat8060[3] = 0x08;
+                                        txFeat8060[4] = 0x80;
+                                        txFeat8060[5] = 0x60; // 0x8060
+                                        byte[] rxFeat8060 = SendAndReceive(handle, hEvent, txFeat8060, bestEndpoint.InputReportByteLength, 200, bestEndpoint.OutputReportByteLength, devIdx, 0x00, 0x08);
+                                        if (rxFeat8060 != null && rxFeat8060.Length >= 5 && rxFeat8060[4] > 0)
+                                        {
+                                            rateFeatIdx = rxFeat8060[4];
+                                            byte[] txGetRate = new byte[20];
+                                            txGetRate[0] = 0x11;
+                                            txGetRate[1] = devIdx;
+                                            txGetRate[2] = rateFeatIdx;
+                                            txGetRate[3] = 0x18; // Func 1 (0x10) | swid 8
+                                            byte[] rxGetRate = SendAndReceive(handle, hEvent, txGetRate, bestEndpoint.InputReportByteLength, 200, bestEndpoint.OutputReportByteLength, devIdx, rateFeatIdx, 0x08);
+                                            if (rxGetRate != null && rxGetRate.Length >= 5)
+                                            {
+                                                int ms = rxGetRate[4];
+                                                if (ms == 1) detectedRate = 1000;
+                                                else if (ms == 2) detectedRate = 500;
+                                                else if (ms == 4) detectedRate = 250;
+                                                else if (ms == 8) detectedRate = 125;
+                                            }
+                                            supportedRates = new int[] { 125, 250, 500, 1000 };
+                                        }
+                                    }
+                                }
+
+                                string finalName = !string.IsNullOrEmpty(detectedName) ? detectedName : GetModelName(detectedPid, foundName);
+                                DeviceCategory cat = DetectCategory(detectedPid, finalName);
+                                string deviceId = "Logitech:" + foundVid.ToString("X4") + ":" + detectedPid.ToString("X4") + (devIdx != 0xFF ? (":" + devIdx) : "");
+
+                                if (deviceOnline)
+                                {
+                                    LogitechEndpoint ep = new LogitechEndpoint
+                                    {
+                                        DeviceId = deviceId,
+                                        DevicePath = bestEndpoint.DevicePath,
+                                        DevIndex = devIdx,
+                                        InputReportLength = bestEndpoint.InputReportByteLength,
+                                        OutputReportLength = bestEndpoint.OutputReportByteLength,
+                                        CurrentDpi = (hardwareDpi > 0) ? hardwareDpi : CachedDpi,
+                                        CurrentDpiY = (hardwareDpiY > 0) ? hardwareDpiY : ((hardwareDpi > 0) ? hardwareDpi : CachedDpiY),
+                                        PollingRate = (detectedRate > 0) ? detectedRate : CachedPollingRate,
+                                        DpiFeatureIndex = dpiFeatIdx,
+                                        ExtDpiFeatureIndex = extDpiFeatIdx,
+                                        RateFeatureIndex = rateFeatIdx,
+                                        ExtRateFeatureIndex = extRateFeatIdx,
+                                        SupportedRates = supportedRates,
+                                        LastSeen = DateTime.Now
+                                    };
+                                    activeEndpoints[deviceId] = ep;
+                                }
+
+                                if (batteryPercent >= 0)
+                                {
+                                    CachedBatteryPercent = batteryPercent;
+                                    CachedIsCharging = isCharging;
+                                    CachedLastUpdated = DateTime.Now;
+                                    CachedDeviceName = finalName;
+                                    HasValidHardwareReading = true;
+                                    deviceBatteryCache[deviceId] = batteryPercent;
+                                    SaveHardwareCache();
+                                }
+
+                                int displayBattery = (batteryPercent >= 0) ? batteryPercent : GetCachedBatteryForDevice(deviceId);
+                                bool displayCharging = (batteryPercent >= 0) ? isCharging : CachedIsCharging;
+
+                                if (deviceOnline || isDongle)
+                                {
+                                    int finalDpiX = (hardwareDpi > 0) ? hardwareDpi : CachedDpi;
+                                    int finalDpiY = (hardwareDpiY > 0) ? hardwareDpiY : finalDpiX;
+                                    int finalRate = (detectedRate > 0) ? detectedRate : CachedPollingRate;
+
+                                    MouseBatteryInfo info = new MouseBatteryInfo
+                                    {
+                                        DeviceId = deviceId,
+                                        HardwareFingerprint = deviceId,
+                                        Brand = "Logitech",
+                                        DeviceName = finalName,
+                                        Category = cat,
+                                        Transport = isDongle ? "Lightspeed 无线" : "USB 有线",
+                                        IsConnected = true,
+                                        IsSleeping = !deviceOnline,
+                                        IsDonglePresent = true,
+                                        IsCustom = false,
+                                        BatteryPercent = displayBattery,
+                                        ExactBatteryPercent = displayBattery,
+                                        IsCharging = displayCharging,
+                                        LastUpdated = (batteryPercent >= 0) ? DateTime.Now : (CachedLastUpdated != DateTime.MinValue ? CachedLastUpdated : DateTime.Now),
+                                        Dpi = finalDpiX,
+                                        DpiY = finalDpiY,
+                                        IsXyIndependent = (finalDpiY != finalDpiX),
+                                        DpiStage = 2,
+                                        DpiStageCount = 5,
+                                        DpiStages = new int[] { 400, 800, 1600, 3200, 6400 },
+                                        DpiStagesY = new int[] { 400, 800, 1600, 3200, 6400 },
+                                        PollingRate = finalRate,
+                                        SupportedPollingRates = supportedRates
+                                    };
+
+                                    if (deviceOnline)
+                                    {
+                                        results.Add(info);
+                                        if (!isDongle) break;
+                                    }
+                                    else if (isDongle && devIdx == 0x01 && results.Count == 0)
+                                    {
+                                        results.Add(info);
+                                    }
+                                }
+                            }
+                        }
+                        finally
+                        {
+                            CloseHandle(hEvent);
+                        }
+                    }
+                }
+                finally
+                {
+                    CloseHandle(handle);
+                }
             }
 
             return results;

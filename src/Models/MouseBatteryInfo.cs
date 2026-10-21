@@ -122,6 +122,10 @@ namespace RazerBatteryTray
                 if (Brand == "Pulsar") return Color.FromArgb(239, 83, 80);
                 if (Brand == "Endgame Gear") return Color.FromArgb(255, 112, 67);
                 if (Brand == "Attack Shark") return Color.FromArgb(38, 198, 218);
+                if (Brand == "Angry Miao" || Brand == "怒喵") return Color.FromArgb(255, 68, 102);
+                if (Brand == "ATK") return Color.FromArgb(255, 110, 0);
+                if (Brand == "Metapanda" || Brand == "玄熊猫") return Color.FromArgb(0, 200, 150);
+                if (Brand == "Sony" || Brand == "索尼") return Color.FromArgb(0, 114, 206);
                 if (Brand == "Mchose" || Brand == "MCHOSE" || Brand == "迈从") return Color.FromArgb(126, 87, 194);
                 if (Brand == "Flydigi" || Brand == "飞智") return Color.FromArgb(124, 77, 255);
                 if (Brand == "Keychron") return Color.FromArgb(255, 87, 34);
@@ -168,6 +172,7 @@ namespace RazerBatteryTray
                     if (DeviceName != null)
                     {
                         string dn = DeviceName.Replace(" ", "");
+                        if (dn.IndexOf("INZONE", StringComparison.OrdinalIgnoreCase) >= 0) return "INZONE Buds";
                         if (dn.IndexOf("Buds4Pro", StringComparison.OrdinalIgnoreCase) >= 0) return "Buds4 Pro";
                         if (dn.IndexOf("Buds3Pro", StringComparison.OrdinalIgnoreCase) >= 0) return "Buds3 Pro";
                         if (dn.IndexOf("Buds", StringComparison.OrdinalIgnoreCase) >= 0) return "无线耳机";

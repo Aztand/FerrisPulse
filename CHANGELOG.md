@@ -2,13 +2,39 @@
 
 所有关于 **FerrisPulse · 灵脉 (多品牌外设电量管家与独占感知引擎)** 的重要升级与功能特性均记录于此。
 
-## 🚧 [Unreleased] - 飞智 / 迈从新品牌外设适配
+## 🚧 [Unreleased] - 社区多设备深度适配 (索尼 / 罗技 / 怒喵 / ATK / 元派 / 飞智 / 迈从)
 
-### 🎮 新品牌协议接入
-- **飞智 (Flydigi) APEX 6 / APEX 6 Pro / Vader 5 Pro**：新增 `FlydigiDeviceHelper`，通过 `0xFFA0` Vendor HID 集合发送 GPA6 `5A A5 01 02` 设备信息查询，解析 `0..10` 档电量、充电标志、连接形态与型号；实测 APEX 6 Pro 返回 100% 电量。
-- **迈从 (MCHOSE) G87 V2 三模机械键盘**：新增 `MchoseDeviceHelper`，通过官方 SDK 的 `55 05 00 38 38` 性能配置查询读取 `rf_battery`（回复 `AA 05 ...`，offset 40）与 `isCharging`（offset 41）。实机 2.4G 读到 **21%**（官方 M HUB 显示 20%，UI 按 10% 精度取整），拔掉充电线后 `isCharging=0`。通用电竞鼠标协议已显式隔离 `3837:3033`。
-- **通用 HID 总线**：新增 `HidTransport`，统一 SetupAPI 枚举、HidD 属性/能力查询与重叠 I/O 超时读写，杜绝同步 `ReadFile` 阻塞 UI 轮询线程。
-- **测试**：新增 `test_flydigi_mchose_support.ps1`，覆盖 VID/PID 白名单、GPA6 电量刻度、MCHOSE 0x55 性能帧/0x4A/0x87 报文与 DeviceManager 注册/隔离。
+### 🎧 音频与耳机设备接入
+- **索尼 (Sony) INZONE Buds 真无线降噪电竞耳机 (WF-G700N, `054C:0EC2`)** (#22)：
+  - 新增 `SonyInzoneHelper`，通过 64 字节 Output Report `0x02` 查询帧发送自增序列号与校验和请求。
+  - 解析 64 字节 Input Report `0x02` 报文：独立读取并校验左右耳塞及充电盒电量百分比（精确到 1%）与充电中状态。
+  - 智能电量降级呈现：当单只耳机入盒断开（返回 `0xFF`）时自动降级显示在耳耳机电量；仅充电盒在位时展示盒子电量；耳机与充电盒均入盒合盖休眠时优雅展示休眠占位状态。
+
+### 🖱️ 旗舰外设协议深度修复与扩展
+- **罗技 (Logitech) G502 X PLUS 旗舰无线鼠标与 Lightspeed 接收器重构修复** (#15)：
+  - **端点智能优选**：枚举全量 HID 集合，智能识别并优先绑定 20 字节通信端点（`UsagePage 0xFF00, Usage 0x0002`），解决 Windows 下向 7 字节短集合发送报文导致 `WriteFile` 失败的顽疾。
+  - **HID++ 2.0 握手修复**：对齐 HID++ 2.0 规范，将 Ping 命令调整为根特性函数 1（`getProtocolVersion`，`txPing[3] = 0x18`）及特征 Token，彻底解决 G502 X 握手无响应。
+  - **设备名称偏移纠正**：修复 `0x0005` 特性读取设备名时的字节偏移错位，完整恢复首字母 `G`（`G502 X PLUS`）。
+  - **统一电量特性 `0x1004` 精确解析**：规范解析第 6 字节充电状态（`1..4` 为充电中），消除旧版将第 5 字节电量等级误判为充电中布尔值的缺陷。
+  - **G HUB 并发保护与多端点解耦**：引入 `matchDevIdx, matchFeatIdx, matchSwid` 三元组响应截止时间匹配，接收器端点解耦，杜绝同类 Lightspeed 设备名称被硬编码覆盖。
+- **ATK A9 AIR 8K & X1 V2 8K 超轻量电竞鼠标** (#21)：
+  - 接入 `373B:1279` (A9 AIR 8K) 与 `373B:12E9` (X1 V2 8K) 硬件白名单与 8000Hz 档位支持。
+  - 升级 `QueryBekenWeBattery`：增加 Output/Input Report 回退机制（通过 `WriteFile` 与 `ReadFile` 异步通信），解决 8K 接收器下 `HidD_SetFeature` 返回失败的问题。
+- **元派 (Metapanda) P1 1K / 4K 无线电竞鼠标** (#21)：
+  - 接入 `3554:F5A9` (1K 接收器)、`3554:F5AB` (有线)、`3554:F5AC` (4K 接收器) 硬件白名单与 4000Hz 档位，复用通用 WE 17 字节电量协议。
+- **怒喵 (Angry Miao) AM Infinity .97 客制化无线鼠标** (#25)：
+  - 接入 `0E8D:0703` (2.4G 接收器)、`0E8D:0880` / `35A1:0035` (有线) 硬件白名单与官方品牌色。
+  - 实现 62 字节 RACE 协议引擎，发送 `0x14` Feature 报文与 `0x30CF` 查询指令，精准获取电量与充电状态。
+
+### 🎮 手柄与键盘设备接入
+- **飞智 (Flydigi) APEX 6 / APEX 6 Pro / Vader 5 Pro** (#24)：
+  - 新增 `FlydigiDeviceHelper`，通过 `0xFFA0` Vendor HID 集合发送 GPA6 `5A A5 01 02` 设备信息查询，解析 `0..10` 档电量、充电标志、连接形态与型号；实测 APEX 6 Pro 返回 100% 电量。
+- **迈从 (MCHOSE) G87 V2 三模机械键盘** (#24)：
+  - 新增 `MchoseDeviceHelper`，通过官方 SDK 的 `55 05 00 38 38` 性能配置查询读取 `rf_battery` 与 `isCharging`；实机 2.4G 读到 21%，通用电竞鼠标协议显式隔离 `3837:3033`。
+
+### 🛠️ 底层总线与自动化测试
+- **通用 HID 总线架构**：新增 `HidTransport`，统一 SetupAPI 枚举、HidD 属性/能力查询与重叠 I/O 超时读写，杜绝同步 `ReadFile` 阻塞 UI 轮询线程。
+- **全量契约测试**：新增 `test_sony_inzone_support.ps1`、`test_logitech_g502x_support.ps1`、`test_atk_angrymiao_metapanda.ps1` 与 `test_flydigi_mchose_support.ps1`，全量测试套件 50/50 100% 通过。
 
 ---
 

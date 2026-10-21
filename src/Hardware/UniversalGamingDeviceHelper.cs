@@ -62,6 +62,8 @@ namespace RazerBatteryTray
         public const int VID_STEELSERIES      = 0x1038; // SteelSeries (Aerox, Rival, Prime)
         public const int VID_CORSAIR          = 0x1B1C; // Corsair (Sabre, M65, Dark Core)
         public const int VID_DAREU            = 0x260D; // Dareu (A950 等)
+        public const int VID_ANGRY_MIAO_1     = 0x0E8D; // 怒喵 AM Infinity 2.4G / 有线
+        public const int VID_ANGRY_MIAO_2     = 0x35A1; // 怒喵 AM Infinity 有线变体
         public const int VID_MCHOSE           = 0x3837; // MCHOSE 迈从 (A5, G3, AX5)
         public const int VID_REDRAGON         = 0x258A; // Redragon / SinoWealth (M690 Pro)
         public const int VID_GWOLVES          = 0x33E4; // G-Wolves (HTX, HTS, HSK)
@@ -255,6 +257,20 @@ namespace RazerBatteryTray
             AddProduct(VID_DAREU, 0x0001, "Dareu", "达尔优 A950 4K", DeviceCategory.Mouse, 4000);
             AddProduct(VID_DAREU, 0x0002, "Dareu", "达尔优 A980 Pro Max 8K", DeviceCategory.Mouse, 8000);
 
+            // --- ATK / VXE ---
+            AddProduct(VID_ATK, 0x1279, "ATK", "ATK A9 AIR 8K 接收器", DeviceCategory.Mouse, 8000);
+            AddProduct(VID_ATK, 0x12E9, "ATK", "ATK X1 V2 8K 接收器", DeviceCategory.Mouse, 8000);
+
+            // --- 玄派玄熊猫 (Metapanda) ---
+            AddProduct(VID_VGN_COMPX, 0xF5A9, "玄熊猫", "玄熊猫 P1 游戏鼠标", DeviceCategory.Mouse, 1000);
+            AddProduct(VID_VGN_COMPX, 0xF5AB, "玄熊猫", "玄熊猫 P1 游戏鼠标 (有线模式)", DeviceCategory.Mouse, 1000);
+            AddProduct(VID_VGN_COMPX, 0xF5AC, "玄熊猫", "玄熊猫 P1 4K 游戏鼠标", DeviceCategory.Mouse, 4000);
+
+            // --- 怒喵 (Angry Miao) ---
+            AddProduct(VID_ANGRY_MIAO_1, 0x0703, "Angry Miao", "怒喵 AM Infinity .97 (2.4G)", DeviceCategory.Mouse, 8000);
+            AddProduct(VID_ANGRY_MIAO_1, 0x0880, "Angry Miao", "怒喵 AM Infinity .97 (有线模式)", DeviceCategory.Mouse, 8000);
+            AddProduct(VID_ANGRY_MIAO_2, 0x0035, "Angry Miao", "怒喵 AM Infinity .97 (有线模式)", DeviceCategory.Mouse, 8000);
+
             // --- DELUX (多彩) ---
             AddProduct(0x258A, 0x1001, "Delux", "多彩 M800 Pro", DeviceCategory.Mouse, 1000);
             AddProduct(0x258A, 0x1002, "Delux", "多彩 M800 Ultra 4K", DeviceCategory.Mouse, 4000);
@@ -306,6 +322,11 @@ namespace RazerBatteryTray
                     break;
                 case VID_ATK:
                     brand = "ATK";
+                    poll = 8000;
+                    break;
+                case VID_ANGRY_MIAO_1:
+                case VID_ANGRY_MIAO_2:
+                    brand = "Angry Miao";
                     poll = 8000;
                     break;
                 case VID_VGN_COMPX:
@@ -575,6 +596,83 @@ namespace RazerBatteryTray
 
         #endregion
 
+        #region 协议引擎四：怒喵 (Angry Miao) 62字节 RACE Feature 引擎
+
+        public static bool QueryAngryMiaoBattery(IntPtr handle, int pid, out int percent, out bool isCharging)
+        {
+            percent = -1;
+            isCharging = false;
+            if (handle == IntPtr.Zero || handle.ToInt64() == -1) return false;
+
+            try
+            {
+                byte route = (pid == 0x0703) ? (byte)0x80 : (byte)0x00;
+                byte[] tx = new byte[62];
+                tx[0] = 0x14; // Report ID
+                tx[1] = 0x0A; // Payload size
+                tx[2] = route;
+                tx[3] = (byte)'R';
+                tx[4] = (byte)'A';
+                tx[5] = (byte)'C';
+                tx[6] = (byte)'E';
+                tx[7] = 0x05;
+                tx[8] = 0x5A;
+                tx[9] = 0x02; // len = 2
+                tx[10] = 0x00;
+                tx[11] = 0xCF; // cmd = 0x30CF (Battery query)
+                tx[12] = 0x30;
+
+                bool setOk = RazerDeviceHelper.HidD_SetFeature(handle, tx, tx.Length);
+                if (!setOk)
+                {
+                    byte[] tx63 = new byte[63];
+                    Array.Copy(tx, 0, tx63, 1, 62);
+                    setOk = RazerDeviceHelper.HidD_SetFeature(handle, tx63, tx63.Length);
+                }
+
+                if (!setOk) return false;
+
+                for (int i = 0; i < 8; i++)
+                {
+                    Thread.Sleep(10);
+                    byte[] rx = new byte[62];
+                    rx[0] = 0x14;
+                    if (RazerDeviceHelper.HidD_GetFeature(handle, rx, rx.Length))
+                    {
+                        int offset = 0;
+                        if (rx.Length >= 63 && rx[0] == 0x00 && rx[1] == 0x14) offset = 1;
+
+                        if (rx[offset] == 0x14 && rx[offset + 3] == (byte)'R' && rx[offset + 4] == (byte)'A' && rx[offset + 5] == (byte)'C' && rx[offset + 6] == (byte)'E')
+                        {
+                            for (int j = offset + 7; j + 6 < rx.Length; j++)
+                            {
+                                if (rx[j] == 0x05 && (rx[j + 1] == 0x5B || rx[j + 1] == 0x5D))
+                                {
+                                    int cmd = rx[j + 4] | (rx[j + 5] << 8);
+                                    if (cmd == 0x30CF && j + 7 < rx.Length)
+                                    {
+                                        int pct = rx[j + 6];
+                                        int chg = (j + 7 < rx.Length) ? rx[j + 7] : 0;
+                                        if (pct > 0 && pct <= 100)
+                                        {
+                                            percent = pct;
+                                            isCharging = (chg != 0);
+                                            return true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            return false;
+        }
+
+        #endregion
+
         #region 全设备综合枚举与发现
 
         public static bool IsSupportedGamingDevice(int vid, string path, string prod)
@@ -595,6 +693,8 @@ namespace RazerBatteryTray
                 case VID_WLMOUSE:
                 case VID_ENDGAME_GEAR:
                 case VID_ATK:
+                case VID_ANGRY_MIAO_1:
+                case VID_ANGRY_MIAO_2:
                 case VID_VGN_COMPX:
                 case VID_ATTACK_SHARK_1:
                 case VID_ATTACK_SHARK_2:
@@ -757,6 +857,11 @@ namespace RazerBatteryTray
                                                 if (!ok)
                                                 {
                                                     ok = QueryVaxeeBattery(handle, out batt, out isChg);
+                                                }
+
+                                                if (!ok)
+                                                {
+                                                    ok = QueryAngryMiaoBattery(handle, attr.ProductID, out batt, out isChg);
                                                 }
 
                                                 if (ok || batt > 0)
