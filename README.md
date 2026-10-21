@@ -1,4 +1,4 @@
-# ⚡ FerrisPulse · 灵脉 (跨品牌外设调度中心) v2.0.0
+﻿# ⚡ FerrisPulse · 灵脉 (跨品牌外设调度中心) v2.2.0
 
 <p align="center">
   <img src="app.png" width="108" height="108" alt="FerrisPulse Logo" />
