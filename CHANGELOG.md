@@ -26,6 +26,11 @@
   - 接入 `0E8D:0703` (2.4G 接收器)、`0E8D:0880` / `35A1:0035` (有线) 硬件白名单与官方品牌色。
   - 实现 62 字节 RACE 协议引擎，发送 `0x14` Feature 报文与 `0x30CF` 查询指令，精准获取电量与充电状态。
 
+- **迈从 (MCHOSE) A5 V2 Ultra 三模无线游戏鼠标**（特别鸣谢社区群友“冰城”逆向贡献）：
+  - 新增 `MchoseMouseHelper`，实现 0x11/0x06 短报文（20 字节，异或 0xFF 掩码）身份握手，高精度提取真实物理电量百分比（1% 精度）、充电状态与连接形态（2.4G/有线/蓝牙）；
+  - 深度支持 0x12/0x67 与 0x12/0x57 报文引擎，读取并配置 6 档板载 DPI，且原生支持 **X 轴与 Y 轴独立分离调校** 与回读校验；
+  - 原生接入 0x11/0x41 档位指令，覆盖 125Hz、500Hz、1000Hz、2000Hz、4000Hz（2.4G）与 8000Hz（有线）超高回报率切换，全面打通主界面交互与全屏游戏自动优化。
+
 ### 🎮 手柄与键盘设备接入
 - **飞智 (Flydigi) APEX 6 / APEX 6 Pro / Vader 5 Pro** (#24)：
   - 新增 `FlydigiDeviceHelper`，通过 `0xFFA0` Vendor HID 集合发送 GPA6 `5A A5 01 02` 设备信息查询，解析 `0..10` 档电量、充电标志、连接形态与型号；实测 APEX 6 Pro 返回 100% 电量。
@@ -34,7 +39,7 @@
 
 ### 🛠️ 底层总线与自动化测试
 - **通用 HID 总线架构**：新增 `HidTransport`，统一 SetupAPI 枚举、HidD 属性/能力查询与重叠 I/O 超时读写，杜绝同步 `ReadFile` 阻塞 UI 轮询线程。
-- **全量契约测试**：新增 `test_sony_inzone_support.ps1`、`test_logitech_g502x_support.ps1`、`test_atk_angrymiao_metapanda.ps1` 与 `test_flydigi_mchose_support.ps1`，全量测试套件 50/50 100% 通过。
+- **全量契约测试**：新增 `test_sony_inzone_support.ps1`、`test_logitech_g502x_support.ps1`、`test_atk_angrymiao_metapanda.ps1` 与 `test_flydigi_mchose_support.ps1`，全量测试套件 51/51 100% 通过（新增 test_mchose_mouse_support.ps1）。
 
 ---
 

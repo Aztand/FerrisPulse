@@ -513,6 +513,38 @@ namespace RazerBatteryTray
                         OnDpiChanged("Logitech", dpi, targetStage > 0 ? targetStage : 1, dpiStageValues.Length, null, dpiY);
                     }));
                 }
+                else if (curDev != null && (curDev.Brand == "Mchose" || curDev.Brand == "MCHOSE" || curDev.Brand == "迈从") && curDev.Category == DeviceCategory.Mouse)
+                {
+                    int dpiY = dpi;
+                    if (targetStage > 0 && curDev.DpiStagesY != null && curDev.DpiStagesY.Length >= targetStage)
+                    {
+                        dpiY = curDev.DpiStagesY[targetStage - 1];
+                    }
+                    else if (curDev.DpiY > 0)
+                    {
+                        dpiY = curDev.DpiY;
+                    }
+
+                    if (targetStage > 0)
+                    {
+                        MchoseMouseHelper.SetMchoseDpiStage(targetStage);
+                    }
+                    else
+                    {
+                        MchoseMouseHelper.SetMchoseDpi(dpi, dpiY, curDev.DpiStage > 0 ? curDev.DpiStage : 1);
+                    }
+
+                    this.BeginInvoke(new Action(() => {
+                        if (curDev != null)
+                        {
+                            curDev.Dpi = dpi;
+                            curDev.DpiY = dpiY;
+                            if (targetStage > 0) curDev.DpiStage = targetStage;
+                        }
+                        HighlightDpiStage(targetStage > 0 ? targetStage : 1);
+                        OnDpiChanged("MCHOSE", dpi, targetStage > 0 ? targetStage : 1, dpiStageValues.Length, null, dpiY);
+                    }));
+                }
                 else
                 {
                     string rzDevId = curDev != null ? curDev.DeviceId : null;
@@ -583,6 +615,10 @@ namespace RazerBatteryTray
                     else if (curDev != null && (curDev.Brand == "Rapoo" || curDev.Brand == "雷柏"))
                     {
                         ok = RapooDeviceHelper.SetRapooPollingRate(hz);
+                    }
+                    else if (curDev != null && (curDev.Brand == "Mchose" || curDev.Brand == "MCHOSE" || curDev.Brand == "迈从") && curDev.Category == DeviceCategory.Mouse)
+                    {
+                        ok = MchoseMouseHelper.SetMchosePollingRate(hz);
                     }
                     else if (curDev != null && (curDev.Brand == "Razer" || curDev.Brand == "雷蛇" || (curDev.DeviceId != null && curDev.DeviceId.StartsWith("Razer:1532:"))))
                     {
@@ -963,6 +999,7 @@ namespace RazerBatteryTray
                     if (brand == "Valkyrie" || brand == "瓦尔基里") rOk = ValkyrieDeviceHelper.SetValkyriePollingRate(targetHz);
                     else if (brand == "Logitech" || brand == "罗技") rOk = LogitechDeviceHelper.SetLogitechPollingRate(targetHz, curDev.DeviceId);
                     else if (brand == "Rapoo" || brand == "雷柏") rOk = RapooDeviceHelper.SetRapooPollingRate(targetHz);
+                    else if ((brand == "Mchose" || brand == "MCHOSE" || brand == "迈从") && curDev.Category == DeviceCategory.Mouse) rOk = MchoseMouseHelper.SetMchosePollingRate(targetHz);
                     else if (brand == "Razer" || brand == "雷蛇" || (curDev.DeviceId != null && curDev.DeviceId.StartsWith("Razer:1532:"))) rOk = RazerDeviceHelper.SetRazerPollingRate(targetHz, curDev.DeviceId);
                     else rOk = RazerDeviceHelper.SetRazerPollingRate(targetHz, curDev.DeviceId);
                     if (rOk) break;
@@ -1222,6 +1259,10 @@ namespace RazerBatteryTray
                         }
                         ok = LogitechDeviceHelper.SetLogitechDpi(targetDpi, targetDpiY, curDev.DeviceId);
                     }
+                    else if ((brand == "Mchose" || brand == "MCHOSE" || brand == "迈从") && curDev.Category == DeviceCategory.Mouse)
+                    {
+                        ok = (targetStage > 0) ? MchoseMouseHelper.SetMchoseDpiStage(targetStage) : MchoseMouseHelper.SetMchoseDpi(targetDpi, targetDpi, 1);
+                    }
                     else // Razer or other
                     {
                         string rzDevId = curDev.DeviceId;
@@ -1301,6 +1342,10 @@ namespace RazerBatteryTray
                             targetDpiY = curDev.DpiStagesY[targetStage - 1];
                         }
                         ok = LogitechDeviceHelper.SetLogitechDpi(targetDpi, targetDpiY, curDev.DeviceId);
+                    }
+                    else if ((brand == "Mchose" || brand == "MCHOSE" || brand == "迈从") && curDev.Category == DeviceCategory.Mouse)
+                    {
+                        ok = (targetStage > 0) ? MchoseMouseHelper.SetMchoseDpiStage(targetStage) : MchoseMouseHelper.SetMchoseDpi(targetDpi, targetDpi, 1);
                     }
                     else // Razer or other
                     {

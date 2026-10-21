@@ -352,10 +352,6 @@ namespace RazerBatteryTray
                 case VID_KEYCHRON:
                     brand = "Keychron";
                     break;
-                case VID_MCHOSE:
-                    brand = "MCHOSE";
-                    poll = 4000;
-                    break;
                 case VID_DAREU:
                     brand = "Dareu";
                     poll = 4000;
@@ -709,7 +705,6 @@ namespace RazerBatteryTray
                 case VID_FINALMOUSE:
                 case VID_KEYCHRON:
                 case VID_WOOTING:
-                case VID_MCHOSE:
                 case VID_DAREU:
                 case VID_ASUS:
                 case VID_STEELSERIES:

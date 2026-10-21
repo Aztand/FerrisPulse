@@ -248,6 +248,16 @@
   - 部分超高回报率（4000Hz/8000Hz）接收器（如 ATK A9 AIR / X1 V2 的 8K NANO 接收器 `373B:1279` / `12E9`）禁用了 64 字节 `HidD_SetFeature`，调用必然失败。
   - 必须升级 `QueryBekenWeBattery`：当 Feature 方式失败时，自动回退到 17 字节 Output Report（`WriteFile`）发送 `0x05, 0x11, 0x00, 0x00, 0x08, 0x01` 并通过重叠 I/O `ReadFile` 读取 17 字节 Input 应答，解析 `rx[7]` 获得真实电量。元派 P1（`3554:F5A9` / `F5AB` / `F5AC`）全模组完美兼容此逻辑。
 
+#### 5. 迈从 (MCHOSE) A5 V2 Ultra 三模鼠标私有 WebHID 协议
+- **0x11 短报文身份与电量逆向（异或 0xFF 掩码通信）**：
+  - 设备过滤：UsagePage `0xFF01`（首选）或 `0xFF0B`（备用），FeatureReportByteLength >= 21。
+  - 向 Report ID `0x11` 发送 `CMD_IDENTITY (0x06)`，所有 payload 字节均做 `^ 0xFF` 掩码反转；
+  - 设备回复 Report ID `0x11`，状态码 `0xF9`：`[11] ^ 0xFF` 为物理电量百分比（`0..100`），`[12] ^ 0xFF` 为充电中标志（`1` 为充电中），`[10] ^ 0xFF` 低 3 位为模式（`0: 有线, 1: 2.4G, 2: 蓝牙`），第 3 位为连接在线状态。
+- **0x12 长报文 64 字节板载 DPI 与回报率引擎**：
+  - 发送 `CMD_CONFIG_READ (0x67)` 读取 63 字节配置：提取当前生效档位、6 组 X 轴与 Y 轴独立 DPI（`DpiX[i]` 位于 offset 4，`DpiY[i]` 位于 offset 51）；
+  - 修改后发送 `CMD_CONFIG_WRITE (0x57)` 写入并回读验证；通过 `CMD_RATE (0x41)` 实现 125~8000Hz 超高回报率切换。
+  - 若 0x12 长通道偶发休眠，发送 `CMD_PROFILE_SELECT (0x58) + 0x00` 唤醒重试。
+
 ---
 
 ## 4. 版本发布标准作业程序 (Release SOP)

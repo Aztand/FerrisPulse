@@ -828,6 +828,42 @@ namespace RazerBatteryTray
             }
             catch { }
 
+            // 2.965 Query MCHOSE Mouse (A5 V2 Ultra tri-mode gaming mouse)
+            try
+            {
+                var mchoseMice = MchoseMouseHelper.QueryAllMchoseMice();
+                if (mchoseMice != null && mchoseMice.Count > 0)
+                {
+                    foreach (var dev in mchoseMice)
+                    {
+                        if (dev != null && (dev.IsConnected || dev.IsDonglePresent))
+                        {
+                            bool alreadyInList = false;
+                            for (int i = 0; i < list.Count; i++)
+                            {
+                                if (list[i].DeviceId.Equals(dev.DeviceId, StringComparison.OrdinalIgnoreCase) ||
+                                    (!string.IsNullOrEmpty(list[i].HardwareFingerprint) && list[i].HardwareFingerprint.Equals(dev.HardwareFingerprint, StringComparison.OrdinalIgnoreCase)))
+                                {
+                                    alreadyInList = true;
+                                    break;
+                                }
+                            }
+
+                            if (!alreadyInList)
+                            {
+                                dev.IsCustom = false;
+                                list.Add(dev);
+                                if (dev.BatteryPercent >= 0)
+                                {
+                                    UpdateCustomDeviceBattery(dev.DeviceId, dev.BatteryPercent, DateTime.Now);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
             // 2.97 Query Sony (INZONE Buds WF-G700N wireless earbuds)
             try
             {
