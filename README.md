@@ -111,6 +111,24 @@ build.bat
 
 ---
 
+## 🏆 极客殿堂 · 社区硬核贡献者 (Hall of Fame & Contributors)
+
+**FerrisPulse · 灵脉** 的生态飞轮与茁壮成长，离不开每一位开源极客的无私奉献与硬核探索！  
+在此特别向以下为本项目主干贡献代码、深度协议抓包、逆向推演与底层根因排查的先锋贡献者致以最崇高的敬意：
+
+| 极客贡献者 | 核心硬核贡献与适配成果 | 关联 Issue / PR |
+| :--- | :--- | :--- |
+| **[@jacky50403](https://github.com/jacky50403)** | 深度逆向推演索尼 **INZONE Buds (WF-G700N)** 64 字节 Output/Input Report 报文架构、左右耳及充电盒独立电量与 8 位累加和校验算法，引领音频外设生态突破 | [#22](https://github.com/Ferris-echo/FerrisPulse/issues/22) |
+| **[@TonySen1](https://github.com/TonySen1)** | 极限排查罗技 Lightspeed (C547) 接收器双端点竞争、HID++ 2.0 Ping 命令根函数与 0x1004 统一电量解析，主导 **G502 X PLUS** 与罗技底层驱动重构 | [#15](https://github.com/Ferris-echo/FerrisPulse/issues/15) |
+| **[@Afang555](https://github.com/Afang555)** | 独立编写并开源贡献**玄派玄熊猫 P1** (1K / 4K / 有线) 完整适配源码，推进国产新势力电竞外设生态 | [#21](https://github.com/Ferris-echo/FerrisPulse/issues/21) |
+| **[@leviswhite527](https://github.com/leviswhite527)** | 提供**怒喵 AM Infinity .97** 62 字节 RACE 协议与 **ATK A9 AIR / X1 V2** 8K 报文资料，拓展客制化与超高回报率外设矩阵 | [#25](https://github.com/Ferris-echo/FerrisPulse/issues/25) |
+| **[@lililixxx1](https://github.com/lililixxx1)** | 真机实测并定版雷蛇 **Viper V3 HyperSpeed** 板载按键映射协议与底层 Hardware 驱动命令架构 | [#7](https://github.com/Ferris-echo/FerrisPulse/issues/7), [#13](https://github.com/Ferris-echo/FerrisPulse/issues/13) |
+
+> 💡 **期待你的名字镌刻在此！**  
+> 无论是一份 Wireshark 抓包报文、一次协议逆向推演，还是借助 AI 智能体写出的设备适配驱动，只要经过验证合入主干，你的名字都将被永久记录在灵脉开源殿堂中！
+
+---
+
 ## 📄 开源许可证 (License)
 
 本项目采用 **[GNU General Public License v3.0 (GPLv3)](LICENSE)** 协议开源。
