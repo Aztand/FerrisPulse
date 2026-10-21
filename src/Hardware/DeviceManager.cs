@@ -1051,6 +1051,42 @@ namespace RazerBatteryTray
             catch { }
 
 
+            // 2.14 Query FDAS Runtime Dynamic Devices (Local adapters/*.fp-adapter.json)
+            try
+            {
+                var fdasDevices = FdasRuntimeHelper.QueryAllFdasDevices();
+                if (fdasDevices != null && fdasDevices.Count > 0)
+                {
+                    foreach (var dev in fdasDevices)
+                    {
+                        if (dev != null && dev.IsConnected)
+                        {
+                            bool alreadyInList = false;
+                            for (int i = 0; i < list.Count; i++)
+                            {
+                                if (list[i].DeviceId.Equals(dev.DeviceId, StringComparison.OrdinalIgnoreCase) ||
+                                    (!string.IsNullOrEmpty(list[i].HardwareFingerprint) && list[i].HardwareFingerprint.Equals(dev.HardwareFingerprint, StringComparison.OrdinalIgnoreCase)))
+                                {
+                                    alreadyInList = true;
+                                    break;
+                                }
+                            }
+
+                            if (!alreadyInList)
+                            {
+                                dev.IsCustom = false;
+                                list.Add(dev);
+                                if (dev.BatteryPercent >= 0)
+                                {
+                                    UpdateCustomDeviceBattery(dev.DeviceId, dev.BatteryPercent, DateTime.Now);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
             // 3. Query Custom Devices (Bluetooth / Generic HID)
             try
             {

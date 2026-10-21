@@ -1,4 +1,4 @@
-﻿﻿// ============================================================================
+﻿// ============================================================================
 // 模块名称: AddDeviceWizardForm.cs
 // 所属区域: UI/Forms (业务对话框层)
 // 核心职责:
@@ -34,6 +34,7 @@ namespace RazerBatteryTray
         private ModernButton btnSave;
         private ModernButton btnCancel;
         private ModernButton btnCopyPrompt;
+        private ModernButton btnImportAdapter;
         private ModernButton btnAiTools;
         private WizardRadarBadge radarBadge;
         private ScanningBeamControl beamControl;
@@ -109,7 +110,7 @@ namespace RazerBatteryTray
             }
 
             this.Text = "添加与配置外设向导";
-            this.ClientSize = new Size((int)(430 * dpiScale), (int)(576 * dpiScale));
+            this.ClientSize = new Size((int)(430 * dpiScale), (int)(600 * dpiScale));
             this.BackColor = Color.FromArgb(18, 19, 23);
             this.ForeColor = Color.White;
             this.StartPosition = FormStartPosition.CenterParent;
@@ -174,7 +175,7 @@ namespace RazerBatteryTray
             lstDevices.DrawMode = DrawMode.OwnerDrawFixed;
             lstDevices.ItemHeight = (int)(52 * dpiScale);
             lstDevices.Location = new Point(pad, (int)(72 * dpiScale));
-            lstDevices.Size = new Size(this.ClientSize.Width - (pad * 2), (int)(150 * dpiScale));
+            lstDevices.Size = new Size(this.ClientSize.Width - (pad * 2), (int)(212 * dpiScale));
             lstDevices.DrawItem += LstDevices_DrawItem;
             lstDevices.SelectedIndexChanged += (s, e) => OnDeviceSelected();
             lstDevices.HandleCreated += (s, e) => {
@@ -182,8 +183,8 @@ namespace RazerBatteryTray
             };
             this.Controls.Add(lstDevices);
 
-            // Row 4: Custom Nickname
-            int formY = (int)(230 * dpiScale);
+            // Row 4: Custom Nickname (整体下移，为上方列表腾出展示 4 个设备的完整空间)
+            int formY = (int)(294 * dpiScale);
             var lblName = new Label();
             lblName.Text = "自定义昵称:";
             lblName.Font = new Font("Microsoft YaHei UI", 8.8F);
@@ -199,7 +200,7 @@ namespace RazerBatteryTray
             this.Controls.Add(txtCustomName);
 
             // Row 5: Category Dropdown (ModernDarkDropdown)
-            formY += (int)(36 * dpiScale);
+            formY += (int)(35 * dpiScale);
             var lblCat = new Label();
             lblCat.Text = "外设类别:";
             lblCat.Font = new Font("Microsoft YaHei UI", 8.8F);
@@ -223,20 +224,20 @@ namespace RazerBatteryTray
             this.Controls.Add(cmbCategory);
 
             // Row 6: Live Status Box
-            formY += (int)(38 * dpiScale);
+            formY += (int)(37 * dpiScale);
             lblTestStatus = new Label();
             lblTestStatus.Text = "请从上方列表选择一个设备";
             lblTestStatus.Font = new Font("Microsoft YaHei UI", 8.8F, FontStyle.Bold);
             lblTestStatus.ForeColor = Color.FromArgb(0, 230, 118);
             lblTestStatus.Location = new Point(pad, formY);
-            lblTestStatus.Size = new Size(this.ClientSize.Width - (pad * 2), (int)(38 * dpiScale));
+            lblTestStatus.Size = new Size(this.ClientSize.Width - (pad * 2), (int)(36 * dpiScale));
             this.Controls.Add(lblTestStatus);
 
-            // Row 7: AI Dedicated Card (Self Developer Hub)
+            // Row 7: AI Dedicated Card (Self Developer Hub - 紧凑双行布局)
             int cardW = this.ClientSize.Width - (pad * 2);
-            int cardH = (int)(110 * dpiScale);
+            int cardH = (int)(122 * dpiScale);
             Panel pnlAiAdapter = new Panel();
-            pnlAiAdapter.Location = new Point(pad, (int)(350 * dpiScale));
+            pnlAiAdapter.Location = new Point(pad, (int)(412 * dpiScale));
             pnlAiAdapter.Size = new Size(cardW, cardH);
             pnlAiAdapter.BackColor = Color.FromArgb(22, 25, 34);
             pnlAiAdapter.Paint += (s, e) =>
@@ -277,20 +278,21 @@ namespace RazerBatteryTray
             lblAiSub.Size = new Size(cardW - cPad * 2, (int)(18 * dpiScale));
             pnlAiAdapter.Controls.Add(lblAiSub);
 
-            int btnCopyW = (int)(205 * dpiScale);
-            int btnAiH = (int)(32 * dpiScale);
-            int btnAiY = (int)(58 * dpiScale);
+            int btnAiH = (int)(30 * dpiScale);
+            int btnFullW = cardW - cPad * 2;
+            int halfW = (cardW - cPad * 2 - (int)(10 * dpiScale)) / 2;
 
+            // Row 7.1: 复制提示词 (整行醒目展示，点击后先弹出名称确认框)
             btnCopyPrompt = new ModernButton();
-            btnCopyPrompt.Text = "📋 复制 AI 适配提示词";
+            btnCopyPrompt.Text = "📋 复制 AI 适配提示词 (含硬件指纹)";
             btnCopyPrompt.Font = new Font("Microsoft YaHei UI", 8.5F, FontStyle.Bold);
             btnCopyPrompt.NormalColor = Color.FromArgb(32, 42, 60);
             btnCopyPrompt.HoverColor = Color.FromArgb(46, 60, 86);
             btnCopyPrompt.PressedColor = Color.FromArgb(22, 30, 44);
             btnCopyPrompt.BorderColor = Color.FromArgb(64, 82, 116);
             btnCopyPrompt.TextColor = Color.FromArgb(220, 235, 255);
-            btnCopyPrompt.Location = new Point(cPad, btnAiY);
-            btnCopyPrompt.Size = new Size(btnCopyW, btnAiH);
+            btnCopyPrompt.Location = new Point(cPad, (int)(52 * dpiScale));
+            btnCopyPrompt.Size = new Size(btnFullW, btnAiH);
             btnCopyPrompt.Click += (s, e) =>
             {
                 try
@@ -298,43 +300,83 @@ namespace RazerBatteryTray
                     int selIdx = lstDevices.SelectedIndex;
                     CustomDeviceConfig selItem = (selIdx >= 0 && selIdx < scannedList.Count) ? scannedList[selIdx] : null;
                     string userTxt = txtCustomName != null ? txtCustomName.Text : null;
-                    string prompt = (selItem != null) ? GetAiAdaptationPrompt(selItem, userTxt) : GetAiAdaptationPrompt();
-                    Clipboard.SetText(prompt);
-                    btnCopyPrompt.Text = (selItem != null) ? "✓ 已复制含设备指纹的提示词！" : "✓ 提示词已复制！";
-                    btnCopyPrompt.NormalColor = Color.FromArgb(0, 160, 80);
-                    btnCopyPrompt.HoverColor = Color.FromArgb(0, 180, 90);
-                    btnCopyPrompt.BorderColor = Color.FromArgb(0, 200, 100);
-                    if (copyFeedbackTimer == null)
+                    string defaultModel = !string.IsNullOrEmpty(userTxt) ? userTxt.Trim() : 
+                        (selItem != null ? (!string.IsNullOrEmpty(selItem.CustomName) ? selItem.CustomName : selItem.OriginalName) : "");
+
+                    using (PromptDialog dlg = new PromptDialog("确认外设商业型号", 
+                        "为了让外部 AI 能够精准逆向协议，请确认该外设的真实商业型号：\n（例如：迈从 A5 V2 Ultra、黑爵 AJ199 4K、狼蛛 F75）", 
+                        defaultModel, dpiScale))
                     {
-                        copyFeedbackTimer = new System.Windows.Forms.Timer();
-                        copyFeedbackTimer.Interval = 2500;
-                        copyFeedbackTimer.Tick += (s2, e2) =>
+                        if (dlg.ShowDialog(this) == DialogResult.OK)
                         {
+                            string confirmedName = dlg.InputText.Trim();
+                            if (!string.IsNullOrEmpty(confirmedName))
+                            {
+                                txtCustomName.Text = confirmedName;
+                                if (selItem != null) selItem.CustomName = confirmedName;
+                            }
+                            string prompt = (selItem != null) ? GetAiAdaptationPrompt(selItem, confirmedName) : GetAiAdaptationPrompt();
+                            Clipboard.SetText(prompt);
+                            btnCopyPrompt.Text = (selItem != null) ? "✓ 已复制含设备指纹的提示词！" : "✓ 提示词已复制！";
+                            btnCopyPrompt.NormalColor = Color.FromArgb(0, 160, 80);
+                            btnCopyPrompt.HoverColor = Color.FromArgb(0, 180, 90);
+                            btnCopyPrompt.BorderColor = Color.FromArgb(0, 200, 100);
+                            if (copyFeedbackTimer == null)
+                            {
+                                copyFeedbackTimer = new System.Windows.Forms.Timer();
+                                copyFeedbackTimer.Interval = 2500;
+                                copyFeedbackTimer.Tick += (s2, e2) =>
+                                {
+                                    copyFeedbackTimer.Stop();
+                                    btnCopyPrompt.Text = "📋 复制 AI 适配提示词 (含硬件指纹)";
+                                    btnCopyPrompt.NormalColor = Color.FromArgb(32, 42, 60);
+                                    btnCopyPrompt.HoverColor = Color.FromArgb(46, 60, 86);
+                                    btnCopyPrompt.BorderColor = Color.FromArgb(64, 82, 116);
+                                };
+                            }
                             copyFeedbackTimer.Stop();
-                            btnCopyPrompt.Text = "📋 复制 AI 适配提示词";
-                            btnCopyPrompt.NormalColor = Color.FromArgb(32, 42, 60);
-                            btnCopyPrompt.HoverColor = Color.FromArgb(46, 60, 86);
-                            btnCopyPrompt.BorderColor = Color.FromArgb(64, 82, 116);
-                        };
+                            copyFeedbackTimer.Start();
+                        }
                     }
-                    copyFeedbackTimer.Stop();
-                    copyFeedbackTimer.Start();
                 }
                 catch { }
             };
             pnlAiAdapter.Controls.Add(btnCopyPrompt);
 
-            int btnToolsW = cardW - cPad * 2 - btnCopyW - (int)(10 * dpiScale);
+            // Row 7.2: 导入适配包与推荐 AI 工具 (同行并列排版)
+            int row2Y = (int)(86 * dpiScale);
+            btnImportAdapter = new ModernButton();
+            btnImportAdapter.Text = "📥 导入/粘贴 AI 适配包";
+            btnImportAdapter.Font = new Font("Microsoft YaHei UI", 8.5F, FontStyle.Bold);
+            btnImportAdapter.NormalColor = Color.FromArgb(28, 48, 40);
+            btnImportAdapter.HoverColor = Color.FromArgb(38, 66, 55);
+            btnImportAdapter.PressedColor = Color.FromArgb(20, 36, 30);
+            btnImportAdapter.BorderColor = Color.FromArgb(52, 96, 76);
+            btnImportAdapter.TextColor = Color.FromArgb(0, 230, 118);
+            btnImportAdapter.Location = new Point(cPad, row2Y);
+            btnImportAdapter.Size = new Size(halfW, btnAiH);
+            btnImportAdapter.Click += (s, e) =>
+            {
+                using (ImportAdapterDialog dlg = new ImportAdapterDialog(dpiScale))
+                {
+                    if (dlg.ShowDialog(this) == DialogResult.OK)
+                    {
+                        PerformScanAsync();
+                    }
+                }
+            };
+            pnlAiAdapter.Controls.Add(btnImportAdapter);
+
             btnAiTools = new ModernButton();
-            btnAiTools.Text = "🚀 获取推荐 AI 工具 ↗";
+            btnAiTools.Text = "🚀 推荐 AI 工具 ↗";
             btnAiTools.Font = new Font("Microsoft YaHei UI", 8.5F, FontStyle.Bold);
             btnAiTools.NormalColor = Color.FromArgb(28, 34, 48);
             btnAiTools.HoverColor = Color.FromArgb(40, 50, 70);
             btnAiTools.PressedColor = Color.FromArgb(20, 24, 34);
             btnAiTools.BorderColor = Color.FromArgb(56, 70, 98);
             btnAiTools.TextColor = Color.FromArgb(0, 210, 255);
-            btnAiTools.Location = new Point(cPad + btnCopyW + (int)(10 * dpiScale), btnAiY);
-            btnAiTools.Size = new Size(btnToolsW, btnAiH);
+            btnAiTools.Location = new Point(cPad + halfW + (int)(10 * dpiScale), row2Y);
+            btnAiTools.Size = new Size(halfW, btnAiH);
             btnAiTools.Click += (s, e) =>
             {
                 using (AiToolsDialog dlg = new AiToolsDialog(dpiScale))
@@ -346,7 +388,7 @@ namespace RazerBatteryTray
 
             // Row 8: Buttons
             int btnH = (int)(36 * dpiScale);
-            int btnY = (int)(524 * dpiScale);
+            int btnY = (int)(548 * dpiScale);
             int cancelW = (int)(110 * dpiScale);
             int saveW = (int)(150 * dpiScale);
 
