@@ -21,6 +21,8 @@ permissions:
 jobs:
   build-and-sign:
     runs-on: windows-latest
+    env:
+      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
 
     steps:
       - name: 检出源码
@@ -46,8 +48,6 @@ jobs:
       - name: 提交 SignPath 权威云端签名 (配置凭据后激活)
         if: env.SIGNPATH_API_TOKEN != ''
         uses: signpath/github-action-submit-signing-request@v1
-        env:
-          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
@@ -61,7 +61,19 @@ jobs:
         if: env.SIGNPATH_API_TOKEN != ''
         shell: powershell
         run: |
-          Copy-Item -Path signed-output\FerrisPulse.exe -Destination FerrisPulse.exe -Force
+          Write-Host "检查 SignPath 返回的产物结构:"
+          Get-ChildItem -Path signed-output -Recurse | Format-Table FullName, Length
+          if (Test-Path "signed-output\FerrisPulse.exe") {
+            Copy-Item -Path signed-output\FerrisPulse.exe -Destination FerrisPulse.exe -Force
+          } else {
+            $zip = Get-ChildItem -Path signed-output -Filter "*.zip" | Select-Object -First 1
+            if ($zip) {
+              Expand-Archive -Path $zip.FullName -DestinationPath signed-extracted -Force
+              if (Test-Path "signed-extracted\FerrisPulse.exe") {
+                Copy-Item -Path signed-extracted\FerrisPulse.exe -Destination FerrisPulse.exe -Force
+              }
+            }
+          }
           Write-Host "已加载权威数字签名:"
           Get-AuthenticodeSignature FerrisPulse.exe | Format-List
 
