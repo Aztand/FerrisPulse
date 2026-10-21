@@ -10,9 +10,21 @@
 1. [项目定位与核心架构](#1-项目定位与核心架构)
 2. [环境锚定与开发终端指令集](#2-环境锚定与开发终端指令集)
 3. [C# 5.0 语法铁律与架构避坑宝典](#3-c-50-语法铁律与架构避坑宝典)
+   - 3.1 编译器与语言等级严格锁定
+   - 3.2 文件编码安全（UTF-8 with BOM）
+   - 3.3 UI 状态同步与布局避坑（血泪教训）
+   - 3.4 Windows 原生 DWM 弹窗动效、抗白框与坐标绝对记忆（核心避坑）
+   - 3.5 Win32 键盘 HID 独占锁与权限陷阱（0 权限握手与双通道隔离）
+   - 3.6 蓝牙外设与 Apple/Beats 生态避坑（真实名称与配对白名单）
+   - 3.7 Windows 行终止符腐败陷阱（`\r\r\n` Double-CR Bug）
+   - 3.8 社区开源贡献与代码署名礼仪
 4. [版本发布标准作业程序 (Release SOP)](#4-版本发布标准作业程序-release-sop)
+   - 4.1 云端标准流水线发布流程
+   - 4.2 “发布后本地留旧测新”实战法则 (Local Test vs Remote Release SOP)
 5. [杀毒软件误报与数字签名防御体系](#5-杀毒软件误报与数字签名防御体系)
 6. [测试驱动与自动化回归体系](#6-测试驱动与自动化回归体系)
+   - 6.1 单元测试与 Mocking 规范
+   - 6.2 自动化测试防锁死铁律（全内存反射加载，杜绝 Add-Type 句柄独占）
 7. [智能体接力公约与知识飞轮机制](#7-智能体接力公约与知识飞轮机制)
 
 ---
@@ -59,6 +71,23 @@
 | **便携版压缩包打包** | `powershell -ExecutionPolicy Bypass -File tools/build_release_zip.ps1 -Version "2.1.1"` | 自动打包 `FerrisPulse_v2.1.1_Portable.zip` |
 | **全自动双平台发布** | `powershell -ExecutionPolicy Bypass -File tools/publish_release.ps1 -Version "2.1.1"` | 读取凭据、编译、校验、打 Tag、推 GitHub & Gitee |
 
+### 2.3 Antigravity 平台终端路径注入陷阱与应对方案 (Platform Path Injection Bug & Workaround)
+- **底层成因与报错特征**：
+  在 Windows 操作系统中，若项目根目录包含中文、空格或特殊标点（如 Unicode 中点 `·`），Antigravity 2.0 平台在长对话上下文压缩（Compaction）或会话状态恢复时，注入给底层终端运行器（Backend Runner）的工作目录变量偶发被格式化为非法形态：
+  ```text
+  Command Working Directory: /"D:/FerrisPulse · 灵脉"
+  ```
+  （开头带有 POSIX 风格的前导斜杠 `/`，且两端包裹了双引号 `"`）。
+- **导致后果**：
+  当 Agent 调用 `run_command` 执行任何终端命令时，平台底层的宿主进程（Go/Node）在执行 `os.Chdir("/\"D:/FerrisPulse · 灵脉\"")` 时直接被 Windows 操作系统拦截，报错：
+  ```text
+  Command failed to run: /"D:/FerrisPulse · 灵脉": no such directory.
+  ```
+  **注意：命令在进入 PowerShell / CMD 之前就被拦截抛出，并非代码或脚本本身错误！**
+- **智能体应对铁律**：
+  1. ❌ **严禁盲目挂起与无休止重试**：一旦发现 `run_command` 抛出上述 `no such directory`，严禁通过循环或启动后台长效子 Agent 去重复执行该命令，否则子 Agent 会永久处于 Block / 卡死状态导致用户困惑。
+  2. 💡 **透明沟通与指引本地构建**：直接向用户说明该平台底层路径注入限制，并引导用户在 IDE 终端执行 `cmd.exe /c "build.bat"` 或在文件资源管理器中直接双击根目录下的 `build.bat`。因为本地环境直接运行 `build.bat` 100% 走原生 Windows 环境，1 秒内即可完成编译生成最新的 `FerrisPulse.exe`。
+
 ---
 
 ## 3. C# 5.0 语法铁律与架构避坑宝典
@@ -86,14 +115,91 @@
 3. **音频播放防截断**：
    - 提示音播放不能依赖可能被垃圾回收或过早 Dispose 的短生命周期对象。
    - 多次连续播放需做好状态同步，避免高频切换时音频被强制中断。
+4. **独立 X/Y 轴 DPI 布局与硬件生效徽标同步 (XY Independent DPI & Live Badge Sync)**：
+   - **按钮呼吸感与自适应排版**：采用独立双轴后按钮文字由单值变为 `XXXX×YYYY` 格式（如 `3000×2250`）。主窗体基准宽度微调至 486px，性能卡片内部水平内边距设为 14px，标签列宽精简至 82px，档位间距设为 5px，使得 5 档模式下单按钮有效宽度由 52px 扩大至 57px+。
+   - **`ModernSegmentButton` 强化防溢出绘制**：使用 `TextRenderer.MeasureText` 配合 `TextFormatFlags.NoPadding` 实时测算，当文字超长（如 11 字符 `16000×12000`）时，自动线性按比例等比缩放字号，严防碰撞按钮圆角边框。
+   - **右上角硬件生效徽标 (`lblLiveRateBadge`) 同步**：在 `UpdatePollingRateDisplayStates` 中同步读取设备当前激活档位的 X 与 Y 轴数值，当处于双轴独立模式且 X≠Y 时，准确输出为 `● 硬件生效: XXXX Hz · XXXX×YYYY DPI`，与主界面及 OSD 保持全链路严格对齐。
+5. **全屏游戏自动优化 OSD 防顶替机制 (Anti-Clobbering Game Optimization OSD)**：
+   - **痛点根因**：进入游戏（或切回桌面）触发 `ApplyGameOptimization` 时，系统弹出包含双轴 DPI、回报率与游戏加速徽标的完整电竞 OSD（`ShowGameOptimization`）。但随后鼠标硬件完成 DPI 档位下发，后台 50ms 轮询线程 `DpiMonitorWorker` 探测到硬件数值变动，误认为是用户物理按键切换，触发 `OnDpiChanged` 调用单值 `ShowDpi`，直接将双开电竞卡片截断覆盖。
+   - **三层立体防顶替方案**：
+     1. **OSD 窗体层熔断**：`DpiOsdForm` 中，只要 `isDualOptimizationMode == true` 且处于展示计时周期内，`ShowDpi` 与 `ShowRate` 严格静默拦截返回，绝不破坏双开卡片。
+     2. **业务分发层静默期**：引入 `lastGameOptOsdTime`，在游戏优化调度后 2.5 秒内，`OnDpiChanged` 自动跳过 `osdForm.ShowDpi` 的调用。
+     3. **轮询状态预先对齐**：在 `ApplyGameOptimization`、`ApplyGameDpiStage` 与 `RestoreDesktopDpiStage` 发送硬件报文前，通过 `SyncMonitoredDpiState` 同步更新所有品牌的 `lastMonitored*Dpi` 与 `lastMonitored*Stage`，从源头杜绝 `DpiMonitorWorker` 产生虚假的“物理按键切换”硬件变更事件。
+
+6. **全屏游戏双开 OSD 排版美化与视觉规范 (Dual Game Optimization OSD Visual Hierarchy)**：
+   - **顶部标题无 Emoji 化与风格对齐**：原有的 `⚡`、`🍃` 在 GDI+ `Microsoft YaHei UI` 字体下会渲染为刺眼的乱码方块 `□`。参考单独回报率切换卡片（`isRateMode`）设计规范，去除 Emoji 符号，采用纯文字设计（进入游戏：“全屏电竞性能优化”；离开游戏：“常规桌面状态恢复”），字体为 YaHei Bold 9.2pt，色彩为典雅钛银色 `Color.FromArgb(195, 205, 225)`，居中对齐。
+   - **数值与单位排版大字号强化**：原先双开卡片数值字号过小。将标准单值 DPI 与回报率字号提升至 `18.5f * dpiScale`，独立 XY 双轴字号提升至 `13.5f * dpiScale`（如 `3000×2250`），单位（`DPI`、`Hz`）放大至 `8.5f * dpiScale` 并沿数字底部基线对齐（`unitY = numY + h - uh - 1.2f`）。
+   - **底部战术胶囊徽章去除冗余档位**：根据极简 HUD 规范，彻底移除`第几档`（如 `第 4 档 · `）冗余前缀，仅保留状态核心提示：“极速超低延迟已激活”与“桌面节能平稳模式”，并装载于深色战术胶囊微光徽章内（深色圆角背景、微妙边框与发光微点）。
+   - **窗体尺度微调**：基准尺寸由 230×74 扩增为 248×76，保证 100%~200% Windows 系统缩放下双侧数值与底栏均具备呼吸感与充足留白。
+
+### 3.4 Windows 原生 DWM 弹窗动效、抗白框与坐标绝对记忆（核心避坑）
+这是经过多次迭代与用户深度对齐后沉淀的**黄金窗口状态机规范**：
+1. **❌ 严禁使用 `AnimateWindow` 软件模拟动画**：
+   - `AnimateWindow`（如 `AW_BLEND`）是 Windows 98 时代的 GDI 传统函数。在 Windows 10/11 的 DWM 硬件加速合成架构下，它会强行触发离屏内存 DC 的 GDI blit，在界面完全就绪前用系统默认白色笔刷擦除，**必然导致深色模式下闪现刺眼的白框（White Flash）**，且动画生硬卡顿，与系统原生动效割裂。
+2. **❌ 严禁使用 `WindowState = Minimized` 作为隐藏状态**：
+   - 如果窗口在托盘隐藏时被设为 `Minimized`，下一次调用 `ShowWindow(SW_RESTORE)` 时，Windows 会默认播放从**屏幕底部的任务栏 / Dock 栏飞出变形**的还原动画，造成严重的视觉拉扯感并导致窗口坐标乱飘。
+3. **❌ 为什么单纯的 `this.Hide()` + `this.Show()` 没有弹窗动画？**：
+   - 当同一个 Win32 窗口句柄（`HWND`）已经被创建并展示过一次后，后续的 `Show()` 仅被 DWM 视为已有窗口的可见性切换，DWM 会直接静态绘制，跳过系统的“Window Open（窗口开启）”居中缩放微光动画。
+4. **✅ 终极解决方案：`this.RecreateHandle()` 窗口生命周期重塑**：
+   - 在主窗体 [`MainForm.cs`](file:///D:/FerrisPulse%20%C2%B7%20%E7%81%B5%E8%84%89/src/UI/Forms/MainForm.cs) 的 `ShowWindow()` 唤醒逻辑中：
+     ```csharp
+     if (!this.Visible)
+     {
+         try
+         {
+             this.RecreateHandle(); // 重建 Win32 原生句柄，重置 DWM 呈现状态机
+             RestoreWindowPosition(); // 锁死上次关闭的原位坐标
+         }
+         catch { }
+         this.WindowState = FormWindowState.Normal;
+         this.Show(); // 触发全新窗口首次呈现，100% 播放与首次启动一致的原生 DWM 展开动画！
+     }
+     ```
+   - **原理**：`RecreateHandle()` 销毁旧句柄并重新调用 `CreateWindowEx`。Windows DWM 将其判定为全新的顶级窗口诞生，在 `Show()` 瞬间**完美重现与软件首次冷启动完全一致的原生居中平滑缩放展开微光动画**！
+   - **坐标绝对记忆**：`StartPosition` 固定为 `Manual`，句柄重建前后锁定 `savedWindowX` 与 `savedWindowY`，窗口严格在用户上次关闭它的原地展开，绝不从底栏乱飞。
+   - **彻底阻断白框**：在 `MainForm.Events.cs` 中重写 `OnPaintBackground` 并拦截 `WM_ERASEBKGND`（直接返回 `(IntPtr)1`），系统浅色底色彻底无法介入绘制，全程暗黑纯色抗闪烁。
+   - **句柄生命周期重绑定规范**：
+     - 在 `OnHandleCreated` 中重新挂载 UIPI 消息豁免（`WM_SHOWME`, `WM_TASKBARCREATED`）、应用暗黑云角主题 `ModernThemeHelper.ApplyModernWin11Theme(this.Handle)`、注册硬件通知 `RegisterUsbNotification()` 以及重连鼠标休眠唤醒探测。
+     - 在 `OnHandleDestroyed` 中妥善调用 `UnregisterDeviceNotification(hDevNotify)`，杜绝句柄泄露。
+
+### 3.5 Win32 键盘 HID 独占锁与权限陷阱（瓦尔基里等键盘变“免驱”根因）
+1. **Windows 内核 Keyboard 独占保护**：
+   - Windows 底层 Raw Input 子系统为了安全防范键盘监听木马，对所有属于 Keyboard 集合的 HID 设备句柄强制实行独占锁。
+   - 如果使用 `CreateFile` 打开键盘 HID 句柄时传入了 `GENERIC_READ (0x80000000)`，Windows 内核必定拒绝访问，返回错误代码 5 (`ERROR_ACCESS_DENIED`)！这会导致 `HidD_GetFeature` 报文握手中断，使原本支持读电量的键盘退化为“免驱在线”状态。
+2. **黄金解法：0 访问权限握手**：
+   - 打开键盘类 HID 节点时，首选访问权限必须设为 **`0`（即 `FILE_READ_ATTRIBUTES`）**！
+   - 0 权限既不会触发 Windows 内核对键盘按键输入的独占冲突，又能自由收发 `HidD_GetFeature` / `HidD_SetFeature` 报文，键盘物理电量采集即刻恢复正常。
+3. **键鼠同接收器独立通道隔离**：
+   - 许多品牌（如瓦尔基里、雷蛇多模等）支持一个 2.4G 接收器同时连接键盘与鼠标。在 `DeviceManager` 中必须严格按 `Category`（`DeviceCategory.Mouse` 与 `DeviceCategory.Keyboard`）实行双通道隔离管理，严禁键鼠缓存互相覆盖。
+
+### 3.6 蓝牙外设与 Apple/Beats 生态避坑（真实名称与防路人误扫）
+1. **系统配对真白名单机制（杜绝路人陌生设备误扫）**：
+   - Apple 设备（AirPods、Beats 等）通过 BLE 广播电池信息。如果仅按 BLE 信号扫描，会将周围几十米内所有路人的耳机全部扫描进库且无法删除。
+   - 必须引入系统级经典蓝牙配对白名单（通过 `bthprops.cpl` 注册表与系统配对缓存验证），**仅允许本机 Windows 蓝牙设置中已正式配对的外设入库**，未配对的 BLE 广播一律无感过滤。
+2. **过滤底层驱动 `Wireless iAP` 假名称**：
+   - Windows 为 Apple/Beats 设备配对时，会在耳机物理 MAC 下枚举出一个名为 `Wireless iAP` 的底层协议子端点。如果直接读取子节点名称，耳机会变成 `Wireless iAP`。
+   - 必须建立子端点黑名单，严密过滤 `Wireless iAP`、`iAP`、`Avrcp`、`Hands-Free` 等内部协议名，严格优先采用用户自定义的蓝牙重命名或型号官方全称，并在启动时自动清洗注册表历史脏数据。
+
+### 3.7 Windows 行终止符腐败陷阱（`\r\r\n` Double-CR Bug）
+1. **成因**：
+   - 在 Windows 环境下使用 Python 脚本、PowerShell 字符串或跨平台工具进行正则替换与文件写入时，若换行符处理不当，容易将原本的 `\r\n` 误扩展为 `\r\r\n`。
+   - 这会导致文件行数翻倍（每行之间多出一个空行），后续基于行号或精确字符块的替换工具彻底失效，甚至出现“AI 以为改了但实际上没改掉”的诡异现象！
+2. **防范与清洗法宝**：
+   - 发现代码行数异常激增时，第一时间用二进制检查是否存在 `b'\r\r\n'`。
+   - 编写或运行 `python tools/ensure_boms_safe.py` 进行标准化清洗：`data.replace(b'\r\r\n', b'\r\n')`，并始终保持带签名的 `UTF-8 with BOM`。
+
+### 3.8 社区开源贡献与代码署名礼仪
+- 本项目致力于建立温暖、开放的极客开源生态。对于外部群友或社区开发者贡献的驱动代码或逆向协议（如 HyperX 飓风三无线耳机由群友 **“rm -rf /*”** 贡献），必须在代码注释、更新日志 `CHANGELOG.md` 及发布公告中妥善鸣谢，尊重每一位参与者的付出。
 
 ---
 
 ## 4. 版本发布标准作业程序 (Release SOP)
 
-发布新版本是一项严密的工程操作，任何 Agent 在执行发布时必须严格遵循以下步骤：
+发布新版本是一项严密的工程操作，任何 Agent 在执行发布时必须严格遵循以下标准程序：
 
-### 步骤 1：版本契约四要素对齐
+### 4.1 云端标准流水线发布流程 (Standard Release Pipeline)
+
+#### 步骤 1：版本契约四要素对齐
 1. **`src/Properties/AssemblyInfo.cs`**：
    ```csharp
    [assembly: AssemblyVersion("2.1.1.0")]
@@ -104,13 +210,13 @@
    - 更新 `latestVersion`（如 `"2.1.1"`）。
    - 更新 `releaseDate`（当天日期，如 `"2026-10-20"`）。
    - 更新 `downloadUrl` 对应版本号。
-   - 维护 `changelog` 数组。
+   - 维护 `changelog` 数组（分为“功能与体验革新”、“品牌协议深度融入与外设适配”、“稳定性与问题修复”，无前置序号，表达精炼）。
 3. **`CHANGELOG.md`**：
    - 顶部追加 `## 🚀 [vX.Y.Z] - YYYY-MM-DD` 详细更新日志。
 4. **Git Tag**：
    - 保持标签命名为 `vX.Y.Z`。
 
-### 步骤 2：纯净编译与 Hash/大小计算
+#### 步骤 2：纯净编译与 Hash/大小计算
 ```powershell
 # 杀掉残留进程并编译
 Stop-Process -Name "FerrisPulse" -Force -ErrorAction SilentlyContinue
@@ -121,15 +227,36 @@ $sha256 = (Get-FileHash -Path "FerrisPulse.exe" -Algorithm SHA256).Hash.ToLower(
 $fileSize = (Get-Item "FerrisPulse.exe").Length
 ```
 
-### 步骤 3：全量回归测试验证（一票否决制）
+#### 步骤 3：全量回归测试验证（一票否决制）
 必须运行 `powershell -ExecutionPolicy Bypass -File tools/run_all_tests.ps1`，确保全部测试用例 **100% PASS**（40+ 项全绿），方可进入发布。
 
-### 步骤 4：自动化流水线发布
+#### 步骤 4：自动化流水线发布
 直接调用发布脚本：
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools/publish_release.ps1 -Version "2.1.1" -Title "FerrisPulse · 灵脉 v2.1.1 正式版"
 ```
 脚本将全自动完成：Git 提交 ➡️ 打 Tag ➡️ 推送 GitHub & Gitee ➡️ GitHub Releases 资产上传 ➡️ Gitee Releases 资产上传。
+
+### 4.2 “发布后本地留旧测新”实战法则 (Local Test vs Remote Release SOP)
+
+> 💡 **核心痛点与需求背景**：  
+> 每次新版本（如 v2.1.0）成功发布上线后，用户或测试者需要第一时间在本地验证应用内自更新功能（启动检测 -> 弹出更新提示框 -> 点击立即更新 -> 后台静默下载与哈希校验 -> 替换可执行文件并优雅重启）。  
+> 如果发布完成后，本地的 `FerrisPulse.exe` 也是最新版 v2.1.0，软件启动检测发现本地版本等于远程最新版本，会直接提示“已是最新版本”，导致**完全无法在本地进行端到端的热更新链路实测**！
+
+**为此确立“本地留旧测新”铁律：**
+
+1. **发布后本地主动回滚版本**：
+   - 云端发布完成后，**必须将本地 `src/Properties/AssemblyInfo.cs` 恢复为上一稳定版本（例如 `2.0.4.0`）**。
+   - 重新执行 `cmd.exe /c "build.bat"`，在本地编译出一个版本号为 `2.0.4.0` 的 `FerrisPulse.exe`。
+2. **本地 Git 工作区保持脏状态隔离**：
+   - 本地 `src/Properties/AssemblyInfo.cs` 保持在修改为旧版的状态，**不要 `git commit`**。
+3. **端到端用户自测闭环**：
+   - 用户双击运行本地 `FerrisPulse.exe`（v2.0.4.0）。
+   - 软件向云端请求 `version.json`，识别到新版 v2.1.0。
+   - 触发 `UpdateNoticeForm` 弹出更新卡片，展示新版特性。
+   - 用户点击“立即升级”，体验下载进度、校验与无缝重启至 v2.1.0。
+4. **测试通过后的最终归档**：
+   - 待用户人工验证更新全链路 100% 成功后，后续 Agent 若需继续日常开发，再根据指令重新对齐 `AssemblyInfo.cs`。
 
 ---
 
@@ -156,11 +283,27 @@ powershell -ExecutionPolicy Bypass -File tools/publish_release.ps1 -Version "2.1
 
 ## 6. 测试驱动与自动化回归体系
 
+### 6.1 单元测试与 Mocking 规范
 - **测试用例存放位置**：`tests/test_*.ps1`
 - **编写原则**：
-  - 任何针对 Bug 的修复，必须附带一个能精确复现并验证修复的独立 PowerShell 测试脚本。
+  - 任何针对 Bug 的修复或新功能开发，必须附带一个能精确复现并验证修复的独立 PowerShell 测试脚本。
   - 严禁依赖 GUI 人工肉眼点击；全部通过反射（Reflection）注入 Mock 数据，断言窗体内部控件状态、坐标与尺寸。
   - 所有测试脚本在 `tools/run_all_tests.ps1` 中由 8 秒看门狗守护，防止测试脚本意外死循环卡死流水线。
+
+### 6.2 自动化测试防锁死铁律（全内存反射加载，杜绝 Add-Type 句柄独占）
+- **致命陷阱**：
+  - 若在 PowerShell 测试脚本中直接使用 `Add-Type -Path "FerrisPulse.exe"` 加载被测程序集，当前 PowerShell 进程将与操作系统建立该二进制文件的强互斥文件句柄锁（Handle Lock）。
+  - 这会导致后续重新运行 `build.bat` 时，`csc.exe` 抛出毁灭性编译错误：  
+    `CS0016: Could not write to output file 'FerrisPulse.exe' -- 'The process cannot access the file because it is being used by another process.'`
+  - 必须手动杀死整个 PowerShell 控制台才能解锁，严重破坏本地高频迭代与 CI/CD 流程。
+- **黄金解决方案：全内存反射加载 (Byte-Array Reflection Load)**：
+  - 所有 PowerShell 测试脚本加载 `FerrisPulse.exe` 时，必须使用字节流一次性读取到内存中，再通过内存反射装配，零文件句柄占用：
+    ```powershell
+    $exePath = (Resolve-Path "$PSScriptRoot\..\FerrisPulse.exe").Path
+    $bytes = [System.IO.File]::ReadAllBytes($exePath)
+    $assembly = [System.Reflection.Assembly]::Load($bytes)
+    ```
+  - 这样文件被读取完后文件句柄瞬间释放，后续无论编译多少次都不会产生任何进程冲突或锁死。
 
 ---
 

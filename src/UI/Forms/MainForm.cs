@@ -402,7 +402,10 @@ namespace RazerBatteryTray
 
         private int lastMonitoredRapooStage = -1;
 
-        private int lastMonitoredRapooRate = -1;
+
+
+        private DateTime lastRapooDpiPollTime = DateTime.MinValue;
+        private DateTime lastGameOptOsdTime = DateTime.MinValue;
 
         private Dictionary<string, int> lastMonitoredRazerDpis = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 

@@ -1,4 +1,4 @@
-﻿# 电量管家 (FerrisPulse) Agent Rules & Superpowers Configuration
+# 电量管家 (FerrisPulse) Agent Rules & Superpowers Configuration
 
 > 本文件为“电量管家”工作区的最高指令文件。在本项目中，Superpowers 默认开启，且必须与项目的 7 大开发铁律及智能体实战手册协同执行。
 
@@ -24,7 +24,7 @@
 
 ---
 
-## 2. FerrisPulse 维护规范与工程准则（7 大铁律）
+## 2. FerrisPulse 维护规范与工程准则（11 大铁律）
 
 本项目开发同时必须严格遵守 [AGENT_RULES.md](file:///D:/FerrisPulse%20%C2%B7%20%E7%81%B5%E8%84%89/AGENT_RULES.md) 中的底层铁律：
 
@@ -34,12 +34,11 @@
 4. **模块化工程架构**: 禁止单文件巨石化，严格分层存放于 `src/Core/`, `src/Hardware/`, `src/Models/`, `src/Services/`, `src/UI/`。
 5. **任务栏自愈与自启动守护**: 必须维护注册表自启动与 `WM_TASKBARCREATED` 托盘重建自愈逻辑；桌面图标绝不静默自建，严格由用户托盘手动触发。
 6. **维护准则注释保留**: 每个代码文件头部必须永久保留 `// ⚠️ AI 维护准则 (AI MAINTENANCE DIRECTIVE - DO NOT REMOVE) ⚠️`。
-7. **工作区锁定与文件卫生规范**:
-   - 唯一合法工作区为 **`D:\FerrisPulse · 灵脉\`**（`proud-hertz` 与 `电量管家` 原目录已彻底废弃）。
-   - 根目录只保留标准工程文件，严禁散落临时测试图、草稿代码或日志。
-   - **严禁向 Git 仓库提交编译二进制（`*.exe`, `*.zip` 等）**，发布走 GitHub Releases 附件。
-   - 临时脚本放 `tools/scratch/`，宣传素材放 `promo/`，归档放 `archive/`（均已配 `.gitignore`）。
-   - Agent 收工前必须执行 `git status` 审查工作区，主动清除临时垃圾。
+7. **工作区锁定与文件卫生规范**: 唯一合法工作区为 `D:\FerrisPulse · 灵脉\`；根目录严禁倾倒临时文件；严禁向 Git 仓库提交二进制（`*.exe`, `*.zip` 等）。
+8. **DWM 原生弹窗动效与抗白框**: 严禁 `AnimateWindow` 软件模拟；呼出采用 `this.RecreateHandle()` 重置呈现状态机，重现原生平滑展开微光，拦截 `WM_ERASEBKGND` 彻底消除浅色底色闪烁。
+9. **键盘 HID 0 权限握手与物理隔离**: 键盘 HID 句柄必须传权限 `0`（`FILE_READ_ATTRIBUTES`）避开 Windows 内核防监听独占锁，恢复 `HidD_GetFeature` 电量读取；键鼠多模外设必须在 `DeviceManager` 实行双通道物理隔离。
+10. **自动化测试防锁死铁律**: 测试脚本加载二进制必须采用 `[System.IO.File]::ReadAllBytes` 全内存反射装配，严禁 `Add-Type -Path` 产生强互斥文件句柄锁死导致 `CS0016` 编译报错。
+11. **平台路径注入避坑铁律**: Windows 下工作区路径遇平台会话压缩注入异常时，严禁盲目派生后台死循环重试，及时引导用户通过原生终端或双击 `build.bat` 极速编译。
 
 ---
 
@@ -60,6 +59,24 @@
    - 运行全量测试：`powershell -ExecutionPolicy Bypass -File tools/run_all_tests.ps1`，确保全部 PASS。
 4. **一键双平台发布**：
    - `powershell -ExecutionPolicy Bypass -File tools/publish_release.ps1 -Version "X.Y.Z"`（自动打 Tag、推 GitHub/Gitee 并上传 Release 附件）。
+
+### 3.2 发布后本地“留旧测新”验证铁律 (Local Test vs Remote Release SOP)
+- **核心原则**：云端已发布最新版本后，**本地 `AssemblyInfo.cs` 必须立即回滚为上一版本（如 2.0.4.0）并重新执行 `build.bat`**。
+- **目的**：保证本地 `FerrisPulse.exe` 处于旧版本，以供用户或测试者在本地运行并亲自触发自更新弹窗、下载校验、平滑替换与重启的完整闭环实测。
+- **未验证前禁止提交**：本地处于旧版本的 `AssemblyInfo.cs` 保留在 Git 工作区未提交状态，直至用户确认更新完全成功。
+
+### 3.3 核心技术避坑精要 (Critical Technical Traps)
+1. **原生 DWM 弹窗动效（抗白框闪烁）**：
+   - 严禁使用 `AnimateWindow`（会产生深色模式下刺眼的白框闪烁并破坏合成）。
+   - 呼出时使用 `this.RecreateHandle()` 重置 DWM 呈现状态机，完美重现与冷启动一致的原生平滑展开动效，并由 `WM_ERASEBKGND` 拦截彻底消除白底。
+2. **键盘 HID 0 权限握手**：
+   - Windows 内核对键盘设备有独占防监听保护，传 `GENERIC_READ` 必报 Access Denied (5)。打开键盘句柄必须传 `0` 权限（`FILE_READ_ATTRIBUTES`），方可成功执行 `HidD_GetFeature` 读取物理电量。
+3. **Apple/Beats 蓝牙生态防路人误扫**：
+   - 强制比对 Windows 经典蓝牙配对白名单，未配对的 BLE 广播一律过滤；严格剔除 `Wireless iAP` 等驱动层虚拟端点伪名称。
+4. **测试防锁死（全内存反射）**：
+   - PowerShell 测试脚本必须使用 `[System.IO.File]::ReadAllBytes` 载入内存装配，严禁 `Add-Type -Path` 锁死 `FerrisPulse.exe` 导致后续编译 `CS0016` 报错。
+5. **换行符腐败防范**：
+   - 防范 Windows 下文本追加产生的 `\r\r\n` Double-CR 陷阱，常备 `python tools/ensure_boms_safe.py` 自动化核验与修复。
 
 ---
 

@@ -5,7 +5,7 @@
 //   雷蛇 (Razer) 私有 HID 协议通信实现：
 //   1. 扫描与识别雷蛇 2.4G 接收器与有线/无线鼠标 (VID 0x1532)
 //   2. 构造与发送 90 字节私有报文读取硬件电池百分比与充电状态
-//   3. 实时查询与固化写入板载 DPI 档位与 8000Hz 超高回报率
+//   3. 实时查询与固化写入板载 DPI 档位与 8000Hz 超高回报率 (全系支持 Focus Pro 35K Gen-2 与巴蛇 V3 专业版 35K)
 // 依赖关系: NativeMethods.cs, MouseBatteryInfo.cs, RazerDeviceHardwareState.cs
 //
 // ⚠️ AI 维护准则 (AI MAINTENANCE DIRECTIVE - DO NOT REMOVE) ⚠️:
@@ -85,6 +85,9 @@ namespace RazerBatteryTray
                 case 0x00B5: return 0x00B4; // Viper V2 Pro Dongle -> Wired
                 case 0x00A6: return 0x00A5; // Cobra Pro Dongle -> Wired
                 case 0x009B: return 0x009A; // Basilisk V3 Pro Dongle -> Wired
+                case 0x00AB: return 0x00AA; // Basilisk V3 Pro Alternate Dongle -> Wired
+                case 0x00CD: return 0x00CC; // Basilisk V3 Pro 35K Dongle -> Wired
+                case 0x00D7: return 0x00D6; // Basilisk V3 Pro 35K Phantom Green Dongle -> Wired
                 case 0x00C5: return 0x00C4; // Basilisk V3 35K Dongle -> Wired
                 case 0x00A8: return 0x00A7; // Viper Mini Signature Edition Dongle -> Wired
                 case 0x0090: return 0x008F; // Naga V2 Pro Dongle -> Wired
@@ -271,6 +274,9 @@ namespace RazerBatteryTray
                     case 0x00AC: case 0x00AD: // Viper V3 HyperSpeed
                     case 0x00A7: case 0x00A8: // Viper Mini Signature Edition
                     case 0x009A: case 0x009B: // Basilisk V3 Pro
+                    case 0x00AA: case 0x00AB: // Basilisk V3 Pro Alternate
+                    case 0x00CC: case 0x00CD: // Basilisk V3 Pro 35K
+                    case 0x00D6: case 0x00D7: // Basilisk V3 Pro 35K Phantom Green
                     case 0x00C4: case 0x00C5: // Basilisk V3 35K
                     case 0x00A5: case 0x00A6: // Cobra Pro
                     case 0x008F: case 0x0090: // Naga V2 Pro
@@ -345,10 +351,16 @@ namespace RazerBatteryTray
             { 0x005C, "Razer DeathAdder Elite" },
 
             // Basilisk series
+            { 0x00CC, "Razer Basilisk V3 Pro 35K" },
+            { 0x00CD, "Razer Basilisk V3 Pro 35K" },
+            { 0x00D6, "Razer Basilisk V3 Pro 35K (Phantom Green)" },
+            { 0x00D7, "Razer Basilisk V3 Pro 35K (Phantom Green)" },
             { 0x00C4, "Razer Basilisk V3 35K" },
             { 0x00C5, "Razer Basilisk V3 35K" },
             { 0x009A, "Razer Basilisk V3 Pro" },
             { 0x009B, "Razer Basilisk V3 Pro" },
+            { 0x00AA, "Razer Basilisk V3 Pro" },
+            { 0x00AB, "Razer Basilisk V3 Pro" },
             { 0x00B8, "Razer Basilisk V3" },
             { 0x0085, "Razer Basilisk X HyperSpeed" },
             { 0x0086, "Razer Basilisk X HyperSpeed" },
@@ -492,7 +504,17 @@ namespace RazerBatteryTray
             string combined = fallbackProdName ?? "";
             if (combined.IndexOf("DeathAdder", StringComparison.OrdinalIgnoreCase) >= 0) return "Razer DeathAdder";
             if (combined.IndexOf("Viper", StringComparison.OrdinalIgnoreCase) >= 0) return "Razer Viper";
-            if (combined.IndexOf("Basilisk", StringComparison.OrdinalIgnoreCase) >= 0) return "Razer Basilisk";
+            if (combined.IndexOf("Basilisk", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                if (combined.IndexOf("35K", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return combined.IndexOf("Pro", StringComparison.OrdinalIgnoreCase) >= 0 ? "Razer Basilisk V3 Pro 35K" : "Razer Basilisk V3 35K";
+                }
+                if (combined.IndexOf("Pro", StringComparison.OrdinalIgnoreCase) >= 0) return "Razer Basilisk V3 Pro";
+                if (combined.IndexOf("Ultimate", StringComparison.OrdinalIgnoreCase) >= 0) return "Razer Basilisk Ultimate";
+                if (combined.IndexOf("HyperSpeed", StringComparison.OrdinalIgnoreCase) >= 0) return "Razer Basilisk X HyperSpeed";
+                return "Razer Basilisk";
+            }
             if (combined.IndexOf("Cobra", StringComparison.OrdinalIgnoreCase) >= 0) return "Razer Cobra";
             if (combined.IndexOf("Naga", StringComparison.OrdinalIgnoreCase) >= 0) return "Razer Naga";
             if (combined.IndexOf("Orochi", StringComparison.OrdinalIgnoreCase) >= 0) return "Razer Orochi";
@@ -587,7 +609,7 @@ namespace RazerBatteryTray
                 curPid == 0x00C5 || curPid == 0x00C1 || curPid == 0x00C3 || curPid == 0x0088 ||
                 curPid == 0x0072 || curPid == 0x0090 || curPid == 0x00A3 || curPid == 0x00B3 ||
                 curPid == 0x0008 || curPid == 0x007B || curPid == 0x0092 || curPid == 0x00B9 ||
-                curPid == 0x00E6 || curPid == 0x00DF)
+                curPid == 0x00E6 || curPid == 0x00DF || curPid == 0x00CD || curPid == 0x00D7 || curPid == 0x00AB)
             {
                 return true;
             }
@@ -1365,6 +1387,13 @@ namespace RazerBatteryTray
             return new MouseBatteryInfo { IsConnected = false, IsSleeping = false, IsDonglePresent = false };
         }
 
+        public static bool FastQueryDpi(out int curDpi, out int curDpiY, out int activeStage, out int stageCount, string targetDeviceId = null)
+        {
+            bool res = FastQueryDpi(out curDpi, out activeStage, out stageCount, targetDeviceId);
+            curDpiY = (CachedDpiY > 0) ? CachedDpiY : curDpi;
+            return res;
+        }
+
         public static bool FastQueryDpi(out int curDpi, out int activeStage, out int stageCount, string targetDeviceId = null)
         {
             curDpi = 0;
@@ -1840,7 +1869,9 @@ namespace RazerBatteryTray
         {
             string name = !string.IsNullOrEmpty(deviceName) ? deviceName.ToLowerInvariant() : "";
             // Focus Pro 35K Gen-2: DeathAdder V4 Pro, Viper V4 Pro, Viper V3 Pro, Basilisk V3 Pro 35K, etc.
-            if (pid == 0x00BF || pid == 0x00BE || pid == 0x00E6 || pid == 0x00E5 || pid == 0x00DF || pid == 0x00DE || name.Contains("v4 pro") || name.Contains("viper v3 pro") || name.Contains("35k"))
+            if (pid == 0x00BF || pid == 0x00BE || pid == 0x00E6 || pid == 0x00E5 || pid == 0x00DF || pid == 0x00DE ||
+                pid == 0x00CC || pid == 0x00CD || pid == 0x00D6 || pid == 0x00D7 || pid == 0x00C4 || pid == 0x00C5 ||
+                name.Contains("v4 pro") || name.Contains("viper v3 pro") || name.Contains("35k"))
             {
                 var cap = new RazerDpiCapability();
                 cap.MinDpi = 100;
@@ -1850,7 +1881,7 @@ namespace RazerBatteryTray
                 return cap;
             }
             // Focus Pro 30K: DeathAdder V3 Pro, Viper V2 Pro, Basilisk V3 Pro, Cobra Pro
-            if (pid == 0x00B7 || pid == 0x00B6 || pid == 0x00A6 || pid == 0x00A5 || pid == 0x009B || pid == 0x009A || pid == 0x00AC || pid == 0x00AB || name.Contains("v3 pro") || name.Contains("v2 pro") || name.Contains("cobra pro"))
+            if (pid == 0x00B7 || pid == 0x00B6 || pid == 0x00A6 || pid == 0x00A5 || pid == 0x009B || pid == 0x009A || pid == 0x00AA || pid == 0x00AC || pid == 0x00AB || name.Contains("v3 pro") || name.Contains("v2 pro") || name.Contains("cobra pro"))
             {
                 var cap = new RazerDpiCapability();
                 cap.MinDpi = 100;

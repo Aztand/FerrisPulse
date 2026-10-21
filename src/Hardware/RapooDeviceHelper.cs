@@ -2,7 +2,8 @@
 // 模块名称: RapooDeviceHelper.cs
 // 所属区域: Hardware (硬件驱动层)
 // 核心职责:
-//   雷柏 (Rapoo) 2.4G/有线双模无线鼠标 HID 报文协议通讯实现 (支持全量设备库识别、DPI、XY 独立档位及 125~8000Hz 动态回报率配置)
+//   雷柏 (Rapoo) 2.4G/有线双模无线鼠标 HID 报文协议通讯实现 (支持全量设备库识别、DPI、XY 独立档位及 125~8000Hz 动态回报率配置、
+//   智能接收器与有线模式探测、EEPROM 写入静默避让保护与双 DPI 极速轮询输出)
 // 依赖关系: NativeMethods.cs, MouseBatteryInfo.cs, RazerDeviceHelper.cs
 //
 // ⚠️ AI 维护准则 (AI MAINTENANCE DIRECTIVE - DO NOT REMOVE) ⚠️:
@@ -63,6 +64,21 @@ namespace RazerBatteryTray
         const uint FILE_SHARE_WRITE = 2;
         const uint OPEN_EXISTING = 3;
         const uint FILE_FLAG_OVERLAPPED = 0x40000000;
+
+        [DllImport("hid.dll", SetLastError = true)]
+        public static extern bool HidD_GetProductString(IntPtr hidDeviceObject, StringBuilder buffer, int bufferLength);
+
+        private static DateTime eepromQuietUntil = DateTime.MinValue;
+
+        public static void SetEepromQuietPeriod(int milliseconds = 350)
+        {
+            eepromQuietUntil = DateTime.Now.AddMilliseconds(milliseconds);
+        }
+
+        public static bool IsEepromQuietActive()
+        {
+            return DateTime.Now < eepromQuietUntil;
+        }
 
         public static void LoadHardwareCache()
         {
@@ -226,7 +242,6 @@ namespace RazerBatteryTray
                 cat[0x1423] = "雷柏 VT2 MAX";
                 cat[0x1441] = "雷柏 ESPR8PRO";
                 cat[0x1444] = "雷柏 VT1 MAX";
-                cat[0x1445] = "雷柏 ESPR5";
                 cat[0x144A] = "雷柏 VT0 MAX MASTER";
                 cat[0x144B] = "雷柏 VT3S MAX MASTER";
                 cat[0x144D] = "雷柏 VPR8 PLUS";
@@ -777,7 +792,54 @@ namespace RazerBatteryTray
                 int curDpiX = CachedDpi > 0 ? CachedDpi : 1600;
                 int curDpiY = CachedDpiY > 0 ? CachedDpiY : curDpiX;
                 int curPoll = CachedPollingRate > 0 ? CachedPollingRate : 1000;
-                string transport = (effPid >= 0x4000) ? "USB 有线" : "2.4G 无线";
+
+                int physicalUsbPid = 0;
+                if (!string.IsNullOrEmpty(cachedCol05Path))
+                {
+                    int pidIdx = cachedCol05Path.IndexOf("pid_", StringComparison.OrdinalIgnoreCase);
+                    if (pidIdx >= 0 && pidIdx + 8 <= cachedCol05Path.Length)
+                    {
+                        string hex = cachedCol05Path.Substring(pidIdx + 4, 4);
+                        int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out physicalUsbPid);
+                    }
+                }
+
+                string prodStr = null;
+                try
+                {
+                    StringBuilder sb = new StringBuilder(256);
+                    if (HidD_GetProductString(hOut, sb, sb.Capacity))
+                    {
+                        prodStr = sb.ToString();
+                    }
+                }
+                catch { }
+
+                bool isReceiver = false;
+                if (!string.IsNullOrEmpty(prodStr))
+                {
+                    string pLower = prodStr.ToLowerInvariant();
+                    if (pLower.Contains("receiver") || pLower.Contains("dongle") || pLower.Contains("2.4g") || 
+                        pLower.Contains("wireless") || prodStr.Contains("接收器") || prodStr.Contains("无线"))
+                    {
+                        isReceiver = true;
+                    }
+                }
+                if (!isReceiver && physicalUsbPid > 0)
+                {
+                    if (physicalUsbPid == 0x14FF || physicalUsbPid == 0x1500 || physicalUsbPid == 0x1501 ||
+                        (physicalUsbPid >= 0x1000 && physicalUsbPid < 0x4000))
+                    {
+                        isReceiver = true;
+                    }
+                }
+
+                string transport = isReceiver ? "2.4G 无线" : (effPid >= 0x4000 && physicalUsbPid >= 0x4000 ? "USB 有线" : "2.4G 无线");
+                if (transport == "2.4G 无线" && name.EndsWith(" (有线)"))
+                {
+                    name = name.Substring(0, name.Length - 5).Trim();
+                }
+
                 int batt = CachedBatteryPercent > 0 ? CachedBatteryPercent : 100;
 
                 CachedLastUpdated = DateTime.Now;
@@ -814,9 +876,18 @@ namespace RazerBatteryTray
 
         public static bool FastQueryDpi(out int curDpi, out int activeStage, out int stageCount)
         {
-            curDpi = 0;
+            int dummyY;
+            return FastQueryDpi(out curDpi, out dummyY, out activeStage, out stageCount);
+        }
+
+        public static bool FastQueryDpi(out int curDpiX, out int curDpiY, out int activeStage, out int stageCount)
+        {
+            curDpiX = 0;
+            curDpiY = 0;
             activeStage = 0;
             stageCount = 0;
+
+            if (IsEepromQuietActive()) return false;
 
             byte[] data;
             if (ReadRegister(BANKS_SYSTEM, ADDR_CURRENT_DPI, 1, out data) && data != null && data.Length > 0)
@@ -829,19 +900,25 @@ namespace RazerBatteryTray
                     stageCount = count;
                     if (CachedDpiStages != null && stageIdx < CachedDpiStages.Length)
                     {
-                        curDpi = CachedDpiStages[stageIdx];
+                        curDpiX = CachedDpiStages[stageIdx];
                     }
                     else
                     {
-                        curDpi = CachedDpi;
+                        curDpiX = CachedDpi;
+                    }
+
+                    if (CachedDpiStagesY != null && stageIdx < CachedDpiStagesY.Length)
+                    {
+                        curDpiY = CachedDpiStagesY[stageIdx];
+                    }
+                    else
+                    {
+                        curDpiY = curDpiX;
                     }
 
                     CachedDpiStage = activeStage;
-                    CachedDpi = curDpi;
-                    if (CachedDpiStagesY != null && stageIdx < CachedDpiStagesY.Length)
-                    {
-                        CachedDpiY = CachedDpiStagesY[stageIdx];
-                    }
+                    CachedDpi = curDpiX;
+                    CachedDpiY = curDpiY;
 
                     return true;
                 }
@@ -934,6 +1011,7 @@ namespace RazerBatteryTray
 
                 if (ok1 || ok2)
                 {
+                    SetEepromQuietPeriod(350);
                     CachedPollingRate = hz;
                     SaveHardwareCache();
                     return true;
@@ -951,6 +1029,7 @@ namespace RazerBatteryTray
                 bool ok = WriteRegister(BANKS_SYSTEM, ADDR_CURRENT_DPI, new byte[] { (byte)idx });
                 if (ok)
                 {
+                    SetEepromQuietPeriod(350);
                     CachedDpiStage = targetStage;
                     if (CachedDpiStages != null && idx < CachedDpiStages.Length)
                     {
@@ -1038,6 +1117,7 @@ namespace RazerBatteryTray
 
                 if (okA || okB)
                 {
+                    SetEepromQuietPeriod(350);
                     CachedDpi = stagesX[idx];
                     CachedDpiY = stagesY[idx];
                     CachedDpiStage = idx + 1;

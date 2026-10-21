@@ -255,9 +255,16 @@ public static class LogitechDeviceHelper
         return (HasValidHardwareReading && CachedBatteryPercent > 0) ? CachedBatteryPercent : -1;
     }
 
-    private static byte[] SendAndReceive(IntPtr handle, IntPtr hEvent, byte[] tx, int inLen, int timeoutMs)
+    private static byte[] SendAndReceive(IntPtr handle, IntPtr hEvent, byte[] tx, int inLen, int timeoutMs, int outLen = 0)
     {
         if (handle == IntPtr.Zero || handle == new IntPtr(-1)) return null;
+
+        byte[] txBuffer = tx;
+        if (outLen > 0 && tx != null && tx.Length != outLen)
+        {
+            txBuffer = new byte[outLen];
+            Array.Copy(tx, txBuffer, Math.Min(tx.Length, outLen));
+        }
 
         // Drain pending reports
         byte[] drain = new byte[inLen];
@@ -283,7 +290,7 @@ public static class LogitechDeviceHelper
         OVERLAPPED wOl = new OVERLAPPED();
         wOl.hEvent = hEvent;
         uint written;
-        bool wOk = WriteFile(handle, tx, (uint)tx.Length, out written, ref wOl);
+        bool wOk = WriteFile(handle, txBuffer, (uint)txBuffer.Length, out written, ref wOl);
         if (!wOk && Marshal.GetLastWin32Error() == 997)
         {
             if (WaitForSingleObject(hEvent, 500) == WAIT_OBJECT_0)
@@ -520,9 +527,13 @@ public static class LogitechDeviceHelper
                                                     {
                                                         // Check target device slots on this receiver/connection:
                                                         // index 0xFF (wired), index 0x01..0x06 (paired wireless mouse/keyboard on Lightspeed, Unifying, Bolt)
-                                                        byte[] targetIndices = (foundPid == 0xC52B || foundPid == 0xC542) 
-                                                            ? new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06 } 
-                                                            : new byte[] { 0xFF, 0x01, 0x02 };
+                                                        bool isDongle = (foundPid == 0xC547 || foundPid == 0xC539 || foundPid == 0xC53A || 
+                                                                         foundPid == 0xC545 || foundPid == 0xC548 || foundPid == 0xC54F || 
+                                                                         foundPid == 0xC52B || foundPid == 0xC534 || foundPid == 0xC52F || 
+                                                                         foundPid == 0xC542 || (foundPid >= 0xC500 && foundPid <= 0xC5FF));
+                                                        byte[] targetIndices = isDongle 
+                                                            ? ((foundPid == 0xC52B || foundPid == 0xC542) ? new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06 } : new byte[] { 0x01, 0x02, 0x03, 0x04 }) 
+                                                            : new byte[] { 0xFF, 0x00, 0x01 };
 
                                                         foreach (byte devIdx in targetIndices)
                                                         {
@@ -664,13 +675,46 @@ public static class LogitechDeviceHelper
                                                                         txBat[2] = batFeatIdx;
                                                                         txBat[3] = 0x00; // Func 0
                                                                         byte[] rxBat = SendAndReceive(handle, hEvent, txBat, caps.InputReportByteLength, 300);
-                                                                        if (rxBat != null && rxBat.Length > 6)
+                                                                        if (rxBat != null && rxBat.Length >= 5)
                                                                         {
                                                                             int pct = rxBat[4];
                                                                             if (pct >= 0 && pct <= 100)
                                                                             {
                                                                                 batteryPercent = pct;
-                                                                                isCharging = (rxBat[6] == 1);
+                                                                                if (rxBat.Length > 6) isCharging = (rxBat[6] == 1);
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+
+                                                                // Feature 0x1001: Battery Voltage fallback (GPW older firmwares)
+                                                                if (batteryPercent < 0)
+                                                                {
+                                                                    byte[] txFeat1001 = new byte[20];
+                                                                    txFeat1001[0] = 0x11;
+                                                                    txFeat1001[1] = devIdx;
+                                                                    txFeat1001[2] = 0x00;
+                                                                    txFeat1001[3] = 0x00;
+                                                                    txFeat1001[4] = 0x10;
+                                                                    txFeat1001[5] = 0x01; // 0x1001
+                                                                    byte[] rxFeat1001 = SendAndReceive(handle, hEvent, txFeat1001, caps.InputReportByteLength, 250, caps.OutputReportByteLength);
+                                                                    if (rxFeat1001 != null && rxFeat1001.Length >= 5 && rxFeat1001[4] > 0)
+                                                                    {
+                                                                        byte batFeatIdx = rxFeat1001[4];
+                                                                        byte[] txBat = new byte[20];
+                                                                        txBat[0] = 0x11;
+                                                                        txBat[1] = devIdx;
+                                                                        txBat[2] = batFeatIdx;
+                                                                        txBat[3] = 0x00;
+                                                                        byte[] rxBat = SendAndReceive(handle, hEvent, txBat, caps.InputReportByteLength, 300, caps.OutputReportByteLength);
+                                                                        if (rxBat != null && rxBat.Length >= 6)
+                                                                        {
+                                                                            int vMv = (rxBat[4] << 8) | rxBat[5];
+                                                                            if (rxBat.Length > 6) isCharging = (rxBat[6] == 1 || rxBat[6] == 2);
+                                                                            if (vMv > 3000 && vMv < 4500)
+                                                                            {
+                                                                                int pct = (int)((vMv - 3600) * 100 / (4150 - 3600));
+                                                                                batteryPercent = Math.Max(1, Math.Min(100, pct));
                                                                             }
                                                                         }
                                                                     }
@@ -873,10 +917,10 @@ public static class LogitechDeviceHelper
 
                                                             // Only add if device is online or if dongle is present
                                                             // For dongle receiver, even if mouse is sleeping, provide dongle standby status
-                                                            bool isDongle = (foundPid == 0xC547 || foundPid == 0xC539 || foundPid == 0xC53A || 
-                                                                             foundPid == 0xC545 || foundPid == 0xC548 || foundPid == 0xC54F || 
-                                                                             foundPid == 0xC52B || foundPid == 0xC534 || foundPid == 0xC52F || 
-                                                                             foundPid == 0xC542);
+                                                            // isDongle determined above
+
+
+
 
                                                             if (deviceOnline || isDongle)
                                                             {
@@ -891,7 +935,7 @@ public static class LogitechDeviceHelper
                                                                     Brand = "Logitech",
                                                                     DeviceName = finalName,
                                                                     Category = cat,
-                                                                    Transport = (devIdx == 0xFF) ? "USB 有线" : "Lightspeed 无线",
+                                                                    Transport = isDongle ? "Lightspeed 无线" : "USB 有线",
                                                                     IsConnected = true,
                                                                     IsSleeping = !deviceOnline,
                                                                     IsDonglePresent = true,
@@ -914,7 +958,7 @@ public static class LogitechDeviceHelper
                                                                 if (deviceOnline)
                                                                 {
                                                                     results.Add(info);
-                                                                    if (devIdx == 0xFF) break;
+                                                                    if (!isDongle) break;
                                                                 }
                                                                 else if (isDongle && devIdx == 0x01 && results.Count == 0)
                                                                 {

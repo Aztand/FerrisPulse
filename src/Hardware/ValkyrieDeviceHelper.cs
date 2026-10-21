@@ -66,7 +66,7 @@ namespace RazerBatteryTray
             }
 
             // 代工专用识别码 (MicLink / mlzn OEM 广泛用于瓦尔基里全系 VK 键盘)
-            if (lower.Contains("vid_3151") || lower.Contains("3151:"))
+            if (lower.Contains("vid_3151") || lower.Contains("3151:") || lower.Contains("vid_347a") || lower.Contains("347a:"))
             {
                 return true;
             }
@@ -761,6 +761,36 @@ namespace RazerBatteryTray
                                         if (rx == null || rx.Length < 7)
                                         {
                                             rx = SendValkyrieCommand(handle, 0x04, 10);
+                                        }
+
+                                        if (rx == null || rx.Length < 7)
+                                        {
+                                            int genBatt;
+                                            bool genChg;
+                                            string fp = string.Format("HID:{0:X4}:{1:X4}", attr.VendorID, attr.ProductID);
+                                            if (GenericHidHelper.QueryHidBattery(fp, out genBatt, out genChg) && genBatt > 0)
+                                            {
+                                                string kbModel = GetModelName(attr.VendorID, attr.ProductID, prodStr, DeviceCategory.Keyboard);
+                                                CachedKbName = kbModel;
+                                                CachedKbOnline = true;
+                                                CachedKbBattery = genBatt;
+                                                CachedLastUpdated = DateTime.Now;
+
+                                                MouseBatteryInfo kbInfo = new MouseBatteryInfo();
+                                                kbInfo.DeviceId = string.Format("Valkyrie:{0:X4}:{1:X4}:KB", attr.VendorID, attr.ProductID);
+                                                kbInfo.HardwareFingerprint = fp;
+                                                kbInfo.DeviceName = kbModel;
+                                                kbInfo.Brand = "Valkyrie";
+                                                kbInfo.Category = DeviceCategory.Keyboard;
+                                                kbInfo.Transport = "2.4G 无线";
+                                                kbInfo.IsDonglePresent = true;
+                                                kbInfo.IsConnected = true;
+                                                kbInfo.IsSleeping = false;
+                                                kbInfo.IsCharging = genChg;
+                                                kbInfo.BatteryPercent = genBatt;
+                                                list.Add(kbInfo);
+                                                SaveHardwareCache();
+                                            }
                                         }
 
                                         if (rx != null && rx.Length >= 7)

@@ -2,7 +2,7 @@
 // 模块名称: ModernSegmentButton.cs
 // 所属区域: UI/Controls (基础原子控件层)
 // 核心职责:
-//   分段按钮项（用于 DPI 档位选择、回报率选择等），具备选中/预设/悬停多种高光模式，
+//   分段按钮项（用于 DPI 档位选择、回报率选择等），具备选中/预设/悬停多种高光模式，支持长文本/双轴自适应缩放。
 //   支持自定义品牌强调色（AccentColor）。
 // 依赖关系: RoundedCard
 //
@@ -124,9 +124,30 @@ namespace RazerBatteryTray
                 }
             }
 
-            Font useFont = isSelected ? new Font(Font, FontStyle.Bold) : Font;
-            TextRenderer.DrawText(g, Text, useFont, ClientRectangle, fg,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+            Font useFont = (isSelected && Font.Style != FontStyle.Bold) ? new Font(Font, FontStyle.Bold) : Font;
+            Font drawFont = useFont;
+            Font tempFont = null;
+            try
+            {
+                int safeW = Math.Max(10, Width - 6);
+                Size sz = TextRenderer.MeasureText(g, Text, drawFont, new Size(int.MaxValue, int.MaxValue),
+                    TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+                if (sz.Width > safeW && drawFont.Size > 5.2f)
+                {
+                    float targetSize = drawFont.Size * ((float)safeW / (float)sz.Width);
+                    if (targetSize < 5.2f) targetSize = 5.2f;
+                    tempFont = new Font(drawFont.FontFamily, targetSize, drawFont.Style);
+                    drawFont = tempFont;
+                }
+
+                TextRenderer.DrawText(g, Text, drawFont, ClientRectangle, fg,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+            }
+            finally
+            {
+                if (tempFont != null) tempFont.Dispose();
+                if (useFont != null && useFont != Font) useFont.Dispose();
+            }
         }
     }
 }

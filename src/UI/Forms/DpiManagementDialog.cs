@@ -197,7 +197,7 @@ namespace RazerBatteryTray
             // Toggle XY Independent Button
             btnToggleXy = new DpiActionButton(dpiScale);
             btnToggleXy.Location = new Point(S(4), S(3));
-            btnToggleXy.Size = new Size(S(150), S(26));
+            btnToggleXy.Size = new Size(S(88), S(26));
             btnToggleXy.CornerRadius = S(4);
             btnToggleXy.Font = new Font("Microsoft YaHei UI", 7.8F, FontStyle.Bold);
             btnToggleXy.Cursor = Cursors.Hand;
@@ -205,19 +205,19 @@ namespace RazerBatteryTray
             pnlXyBar.Controls.Add(btnToggleXy);
 
             // Preset: 1:1
-            btnRatio1_1 = CreateRatioButton("1:1", S(158), S(42), 1.0);
+            btnRatio1_1 = CreateRatioButton("等比 1:1", S(96), S(60), 1.0);
             pnlXyBar.Controls.Add(btnRatio1_1);
 
             // Preset: 4:3 补偿 (75%)
-            btnRatio4_3 = CreateRatioButton("4:3 (75%)", S(204), S(66), 0.75);
+            btnRatio4_3 = CreateRatioButton("4:3拉伸补偿", S(160), S(82), 0.75);
             pnlXyBar.Controls.Add(btnRatio4_3);
 
             // Preset: 16:10 补偿 (90%)
-            btnRatio16_10 = CreateRatioButton("16:10 (90%)", S(274), S(68), 0.90);
+            btnRatio16_10 = CreateRatioButton("16:10补偿", S(246), S(74), 0.90);
             pnlXyBar.Controls.Add(btnRatio16_10);
 
             // Preset: 1.33x
-            btnRatio133 = CreateRatioButton("1.33x", S(346), S(38), 1.333333);
+            btnRatio133 = CreateRatioButton("反向1.33x", S(324), S(60), 1.333333);
             pnlXyBar.Controls.Add(btnRatio133);
 
             // 4. Stages List Container
@@ -255,7 +255,7 @@ namespace RazerBatteryTray
             lblHint.Location = new Point(pad, S(402));
             lblHint.Size = new Size(clientW - pad * 2, S(20));
             lblHint.BackColor = Color.Transparent;
-            lblHint.Text = "提示: 点击「设为激活」切换生效档位；保存即刻写入板载存储。";
+            lblHint.Text = "💡 XY轴独立: 专为CS2/瓦罗兰特等4:3拉伸屏设计，调低Y轴可拉平横纵手感偏差；保存即写板载。";
             this.Controls.Add(lblHint);
 
             // 8. Bottom Action Buttons
@@ -373,7 +373,7 @@ namespace RazerBatteryTray
 
             if (isXyMode)
             {
-                btnToggleXy.Text = "🔓 X/Y 轴独立模式";
+                btnToggleXy.Text = "🔓 独立自由";
                 btnToggleXy.NormalColor = Color.FromArgb(35, 45, 65);
                 btnToggleXy.HoverColor = Color.FromArgb(45, 58, 82);
                 btnToggleXy.PressedColor = Color.FromArgb(28, 36, 52);
@@ -382,7 +382,7 @@ namespace RazerBatteryTray
             }
             else
             {
-                btnToggleXy.Text = "🔗 锁定等比 (1:1)";
+                btnToggleXy.Text = "🔗 联动等比";
                 btnToggleXy.NormalColor = Color.FromArgb(20, 36, 28);
                 btnToggleXy.HoverColor = Color.FromArgb(26, 48, 36);
                 btnToggleXy.PressedColor = Color.FromArgb(16, 28, 22);
@@ -390,6 +390,28 @@ namespace RazerBatteryTray
                 btnToggleXy.ForeColor = Color.FromArgb(0, 230, 118);
             }
             btnToggleXy.Invalidate();
+            if (btnRatio1_1 != null) HighlightRatioButton(btnRatio1_1, !isXyMode || Math.Abs(currentRatio - 1.0) < 0.01);
+            if (btnRatio4_3 != null) HighlightRatioButton(btnRatio4_3, isXyMode && Math.Abs(currentRatio - 0.75) < 0.02);
+            if (btnRatio16_10 != null) HighlightRatioButton(btnRatio16_10, isXyMode && Math.Abs(currentRatio - 0.90) < 0.02);
+            if (btnRatio133 != null) HighlightRatioButton(btnRatio133, isXyMode && Math.Abs(currentRatio - 1.333333) < 0.02);
+        }
+
+        private void HighlightRatioButton(DpiActionButton btn, bool isSelected)
+        {
+            if (btn == null) return;
+            if (isSelected)
+            {
+                btn.NormalColor = Color.FromArgb(20, 48, 36);
+                btn.BorderColor = Color.FromArgb(0, 200, 95);
+                btn.ForeColor = Color.FromArgb(0, 230, 120);
+            }
+            else
+            {
+                btn.NormalColor = Color.FromArgb(24, 30, 42);
+                btn.BorderColor = Color.FromArgb(40, 52, 72);
+                btn.ForeColor = Color.FromArgb(160, 175, 195);
+            }
+            btn.Invalidate();
         }
 
         private void RebuildStageRows()

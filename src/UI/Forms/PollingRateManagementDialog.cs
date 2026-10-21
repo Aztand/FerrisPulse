@@ -241,6 +241,7 @@ namespace RazerBatteryTray
             lblError.Size = new Size(clientW - pad * 2, S(18));
             lblError.BackColor = Color.Transparent;
             this.Controls.Add(lblError);
+            RefreshItemRowStates();
 
             // 6. Action Buttons
             int btnH = S(32);
@@ -256,7 +257,7 @@ namespace RazerBatteryTray
             btnCancel.BorderColor = Color.FromArgb(50, 62, 85);
             btnCancel.CornerRadius = S(6);
             btnCancel.Size = new Size(actionW, btnH);
-            btnCancel.Location = new Point(clientW - pad - actionW, S(480));
+            btnCancel.Location = new Point(clientW - pad - (actionW + S(15)) - actionW - S(10), S(480));
             btnCancel.Click += (s, e) => {
                 this.DialogResult = DialogResult.Cancel;
                 this.Close();
@@ -273,7 +274,7 @@ namespace RazerBatteryTray
             btnSave.BorderColor = Color.Transparent;
             btnSave.CornerRadius = S(6);
             btnSave.Size = new Size(actionW + S(15), btnH);
-            btnSave.Location = new Point(btnCancel.Left - (actionW + S(15)) - S(10), S(480));
+            btnSave.Location = new Point(clientW - pad - (actionW + S(15)), S(480));
             btnSave.Click += (s, e) => SaveAndClose();
             this.Controls.Add(btnSave);
         }
@@ -309,7 +310,58 @@ namespace RazerBatteryTray
                 }
                 row.ChkEnable.Checked = match;
             }
-            lblError.Text = "";
+            RefreshItemRowStates();
+        }
+
+        private void RefreshItemRowStates()
+        {
+            int checkedCount = 0;
+            for (int i = 0; i < itemRows.Count; i++)
+            {
+                if (itemRows[i].ChkEnable.Checked) checkedCount++;
+            }
+
+            bool isFull = (checkedCount >= 5);
+
+            for (int i = 0; i < itemRows.Count; i++)
+            {
+                var row = itemRows[i];
+                bool isCurrentActive = (row.Rate == currentActiveRate);
+                if (row.ChkEnable.Checked)
+                {
+                    row.ChkEnable.Enabled = true;
+                    row.RowPanel.BackColor = isCurrentActive ? Color.FromArgb(24, 34, 48) : Color.FromArgb(20, 25, 36);
+                    row.LblRateText.ForeColor = isCurrentActive ? Color.FromArgb(0, 230, 140) : Color.FromArgb(235, 240, 250);
+                    row.LblDelayText.ForeColor = isCurrentActive ? Color.FromArgb(160, 220, 190) : Color.FromArgb(135, 148, 170);
+                }
+                else
+                {
+                    if (isFull)
+                    {
+                        row.ChkEnable.Enabled = false;
+                        row.RowPanel.BackColor = Color.FromArgb(15, 18, 25);
+                        row.LblRateText.ForeColor = Color.FromArgb(85, 95, 110);
+                        row.LblDelayText.ForeColor = Color.FromArgb(65, 75, 90);
+                    }
+                    else
+                    {
+                        row.ChkEnable.Enabled = true;
+                        row.RowPanel.BackColor = isCurrentActive ? Color.FromArgb(24, 34, 48) : Color.FromArgb(20, 25, 36);
+                        row.LblRateText.ForeColor = isCurrentActive ? Color.FromArgb(0, 230, 140) : Color.FromArgb(235, 240, 250);
+                        row.LblDelayText.ForeColor = isCurrentActive ? Color.FromArgb(160, 220, 190) : Color.FromArgb(135, 148, 170);
+                    }
+                }
+            }
+
+            if (isFull)
+            {
+                lblError.Text = "已达到快捷档位上限 (最多 5 档)，请先取消勾选其他档位。";
+                lblError.ForeColor = Color.FromArgb(240, 170, 50);
+            }
+            else
+            {
+                lblError.Text = "";
+            }
         }
 
         private void BuildRateRows()
@@ -354,7 +406,7 @@ namespace RazerBatteryTray
                 chk.BackColor = Color.Transparent;
                 chk.Cursor = Cursors.Hand;
                 chk.CheckedChanged += (s, e) => {
-                    lblError.Text = "";
+                    RefreshItemRowStates();
                 };
                 rowPnl.Controls.Add(chk);
 
@@ -365,7 +417,7 @@ namespace RazerBatteryTray
                 lblHz.Location = new Point(S(36), S(6));
                 lblHz.Size = new Size(S(80), S(20));
                 lblHz.BackColor = Color.Transparent;
-                lblHz.Click += (s, e) => chk.Checked = !chk.Checked;
+                lblHz.Click += (s, e) => { if (chk.Enabled) chk.Checked = !chk.Checked; };
                 rowPnl.Controls.Add(lblHz);
 
                 Label lblDelay = new Label();
@@ -375,7 +427,7 @@ namespace RazerBatteryTray
                 lblDelay.Location = new Point(S(36), S(25));
                 lblDelay.Size = new Size(S(240), S(16));
                 lblDelay.BackColor = Color.Transparent;
-                lblDelay.Click += (s, e) => chk.Checked = !chk.Checked;
+                lblDelay.Click += (s, e) => { if (chk.Enabled) chk.Checked = !chk.Checked; };
                 rowPnl.Controls.Add(lblDelay);
 
                 if (isCurrentActive)
@@ -391,7 +443,7 @@ namespace RazerBatteryTray
                     rowPnl.Controls.Add(lblCurrentBadge);
                 }
 
-                rowPnl.Click += (s, e) => chk.Checked = !chk.Checked;
+                rowPnl.Click += (s, e) => { if (chk.Enabled) chk.Checked = !chk.Checked; };
 
                 pnlRateList.Controls.Add(rowPnl);
 

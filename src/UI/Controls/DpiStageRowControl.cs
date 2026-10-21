@@ -368,6 +368,11 @@ namespace RazerBatteryTray
             if (IsXyIndependent)
             {
                 // Draw 'X' indicator
+                using (GraphicsPath path = RoundedCard.GetRoundedRectangle(rectLabelX, S(3)))
+                {
+                    using (SolidBrush b = new SolidBrush(Color.FromArgb(20, 36, 50))) { g.FillPath(b, path); }
+                    using (Pen p = new Pen(Color.FromArgb(35, 75, 110), 1f)) { g.DrawPath(p, path); }
+                }
                 using (Font f = new Font("Segoe UI", 8.2F, FontStyle.Bold))
                 {
                     TextRenderer.DrawText(g, "X", f, rectLabelX, Color.FromArgb(56, 189, 248),
@@ -383,6 +388,11 @@ namespace RazerBatteryTray
                 }
 
                 // Draw 'Y' indicator
+                using (GraphicsPath path = RoundedCard.GetRoundedRectangle(rectLabelY, S(3)))
+                {
+                    using (SolidBrush b = new SolidBrush(Color.FromArgb(48, 40, 16))) { g.FillPath(b, path); }
+                    using (Pen p = new Pen(Color.FromArgb(100, 85, 30), 1f)) { g.DrawPath(p, path); }
+                }
                 using (Font f = new Font("Segoe UI", 8.2F, FontStyle.Bold))
                 {
                     TextRenderer.DrawText(g, "Y", f, rectLabelY, Color.FromArgb(250, 204, 21),

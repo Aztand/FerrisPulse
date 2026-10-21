@@ -41,6 +41,9 @@ namespace RazerBatteryTray
         private int totalStages = 5;
         private int osdStyle = 0; // 0 = Centered Capsule, 1 = Stepped Gauge, 2 = Compact Top-Right
         private bool isRateMode = false;
+        private bool isDualOptimizationMode = false;
+        private bool isOptEnteringGame = true;
+
         private int currentRate = 1000;
         private string currentRateTitle = "电竞回报率";
         private System.Windows.Forms.Timer displayTimer;
@@ -161,6 +164,7 @@ namespace RazerBatteryTray
         {
             try
             {
+                this.isDualOptimizationMode = false;
                 if (this.IsHandleCreated)
                 {
                     SetWindowPos(this.Handle, IntPtr.Zero, 0, 0, 0, 0,
@@ -177,7 +181,12 @@ namespace RazerBatteryTray
 
         public void ShowDpi(int dpiX, int dpiY, int stage, int count, string brand = "Razer")
         {
+            if (this.isDualOptimizationMode && displayTimer != null && displayTimer.Enabled)
+            {
+                return;
+            }
             this.isRateMode = false;
+            this.isDualOptimizationMode = false;
             this.currentDpi = dpiX;
             this.currentDpiY = (dpiY > 0) ? dpiY : dpiX;
             this.currentStage = stage;
@@ -237,7 +246,12 @@ namespace RazerBatteryTray
 
         public void ShowRate(int hz, string modeTitle, string brand = "Razer")
         {
+            if (this.isDualOptimizationMode && displayTimer != null && displayTimer.Enabled)
+            {
+                return;
+            }
             this.isRateMode = true;
+            this.isDualOptimizationMode = false;
             this.currentRate = hz;
             this.currentRateTitle = !string.IsNullOrEmpty(modeTitle) ? modeTitle : "电竞回报率";
             this.currentBrand = !string.IsNullOrEmpty(brand) ? brand : "Razer";
@@ -270,6 +284,57 @@ namespace RazerBatteryTray
             displayTimer.Start();
         }
 
+        public void ShowGameOptimization(bool isEnteringGame, bool showDpi, int dpiX, int dpiY, int stage, int stageCount, bool showRate, int hz, string brand = "Razer")
+        {
+            if (showDpi && showRate)
+            {
+                this.isDualOptimizationMode = true;
+                this.isRateMode = false;
+                this.isOptEnteringGame = isEnteringGame;
+
+                this.currentDpi = dpiX;
+                this.currentDpiY = (dpiY > 0) ? dpiY : dpiX;
+                this.currentStage = stage;
+                this.totalStages = stageCount > 0 ? stageCount : 5;
+                this.currentRate = hz;
+                this.currentBrand = !string.IsNullOrEmpty(brand) ? brand : "Razer";
+
+                displayTimer.Stop();
+                fadeTimer.Stop();
+                this.Opacity = 1.0;
+
+                int targetW = 248;
+                int targetH = 76;
+                int scaledW = (int)(targetW * dpiScale);
+                int scaledH = (int)(targetH * dpiScale);
+
+                this.Size = new Size(scaledW, scaledH);
+                UpdateOsdRegion(scaledW, scaledH);
+
+                Screen targetScreen = Screen.FromPoint(Cursor.Position);
+                if (targetScreen == null) targetScreen = Screen.PrimaryScreen;
+                Rectangle wa = targetScreen.WorkingArea;
+                int margin = (int)(24 * dpiScale);
+
+                int targetX = wa.Right - scaledW - margin;
+                int targetY = wa.Bottom - scaledH - margin;
+
+                SetWindowPos(this.Handle, HWND_TOPMOST, targetX, targetY, scaledW, scaledH,
+                    SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+
+                this.Invalidate();
+                displayTimer.Start();
+            }
+            else if (showDpi)
+            {
+                ShowDpi(dpiX, dpiY, stage, stageCount, brand);
+            }
+            else if (showRate)
+            {
+                ShowRate(hz, isEnteringGame ? "电竞回报率" : "常规回报率", brand);
+            }
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
@@ -300,6 +365,157 @@ namespace RazerBatteryTray
                 bool isLogitech = (currentBrand == "Logitech" || currentBrand == "罗技");
                 Color brandAccent = isRapoo ? Color.FromArgb(0, 210, 255) : (isValkyrie ? Color.FromArgb(255, 64, 129) : (isLogitech ? Color.FromArgb(0, 180, 255) : Color.FromArgb(0, 230, 118)));
                 string titleText = isRapoo ? "雷柏 DPI" : (isValkyrie ? "瓦尔基里 DPI" : (isLogitech ? "罗技 DPI" : "鼠标 DPI"));
+
+                if (isDualOptimizationMode)
+                {
+                    Color accent = isOptEnteringGame ? Color.FromArgb(0, 230, 140) : Color.FromArgb(0, 180, 255);
+                    string optTitle = isOptEnteringGame ? "全屏电竞性能优化" : "常规桌面状态恢复";
+
+                    // 1. Top Title (Styled referencing standalone polling rate OSD)
+                    float topY = 7.5f * dpiScale;
+                    float titleSize = 9.2f * dpiScale;
+                    using (GraphicsPath titlePath = new GraphicsPath())
+                    {
+                        titlePath.AddString(optTitle, ffYaHei, (int)FontStyle.Bold, titleSize, PointF.Empty, sf);
+                        RectangleF titleBounds = titlePath.GetBounds();
+                        float startX = (Width - titleBounds.Width) / 2f;
+                        using (Matrix mTitle = new Matrix())
+                        {
+                            mTitle.Translate(startX - titleBounds.Left, topY - titleBounds.Top);
+                            titlePath.Transform(mTitle);
+                        }
+                        using (SolidBrush titleBrush = new SolidBrush(Color.FromArgb(195, 205, 225)))
+                            g.FillPath(titleBrush, titlePath);
+                    }
+
+                    // 2. Middle Row: Left DPI | Right Polling Rate (Expanded Typography)
+                    float midY = 23f * dpiScale;
+                    float midH = 26f * dpiScale;
+                    float halfW = Width / 2f;
+
+                    // Divider line in center
+                    using (Pen pDiv = new Pen(Color.FromArgb(42, 50, 68), 1f))
+                    {
+                        g.DrawLine(pDiv, halfW, midY + 2f * dpiScale, halfW, midY + midH - 2f * dpiScale);
+                    }
+
+                    // Left: DPI (Large, high-readability values)
+                    bool isXy = (currentDpiY > 0 && currentDpiY != currentDpi);
+                    string dpiStr = isXy ? string.Format("{0}×{1}", currentDpi, currentDpiY) : currentDpi.ToString();
+                    float dpiValSize = (isXy ? 13.5f : 18.5f) * dpiScale;
+                    float dpiUnitSize = 8.5f * dpiScale;
+                    using (GraphicsPath dPath = new GraphicsPath())
+                    using (GraphicsPath uPath = new GraphicsPath())
+                    {
+                        dPath.AddString(dpiStr, ffSegoe, (int)FontStyle.Bold, dpiValSize, PointF.Empty, sf);
+                        RectangleF dBounds = dPath.GetBounds();
+
+                        uPath.AddString("DPI", ffSegoe, (int)FontStyle.Bold, dpiUnitSize, PointF.Empty, sf);
+                        RectangleF uBounds = uPath.GetBounds();
+
+                        float leftTotalW = dBounds.Width + 3.5f * dpiScale + uBounds.Width;
+                        float leftStartX = (halfW - leftTotalW) / 2f;
+
+                        float numY = midY + (midH - dBounds.Height) / 2f;
+                        using (Matrix m = new Matrix())
+                        {
+                            m.Translate(leftStartX - dBounds.Left, numY - dBounds.Top);
+                            dPath.Transform(m);
+                        }
+                        using (SolidBrush wb = new SolidBrush(Color.FromArgb(248, 250, 255))) g.FillPath(wb, dPath);
+
+                        float unitY = numY + dBounds.Height - uBounds.Height - 1.2f * dpiScale;
+                        using (Matrix m = new Matrix())
+                        {
+                            m.Translate(leftStartX + dBounds.Width + 3.5f * dpiScale - uBounds.Left, unitY - uBounds.Top);
+                            uPath.Transform(m);
+                        }
+                        using (SolidBrush ab = new SolidBrush(accent)) g.FillPath(ab, uPath);
+                    }
+
+                    // Right: Polling Rate (Large, matching left DPI size)
+                    string rateStr = currentRate.ToString();
+                    float rateValSize = 18.5f * dpiScale;
+                    float rateUnitSize = 8.5f * dpiScale;
+                    using (GraphicsPath rPath = new GraphicsPath())
+                    using (GraphicsPath ruPath = new GraphicsPath())
+                    {
+                        rPath.AddString(rateStr, ffSegoe, (int)FontStyle.Bold, rateValSize, PointF.Empty, sf);
+                        RectangleF rBounds = rPath.GetBounds();
+
+                        ruPath.AddString("Hz", ffSegoe, (int)FontStyle.Bold, rateUnitSize, PointF.Empty, sf);
+                        RectangleF ruBounds = ruPath.GetBounds();
+
+                        float rightTotalW = rBounds.Width + 3.5f * dpiScale + ruBounds.Width;
+                        float rightStartX = halfW + (halfW - rightTotalW) / 2f;
+
+                        float numY = midY + (midH - rBounds.Height) / 2f;
+                        using (Matrix m = new Matrix())
+                        {
+                            m.Translate(rightStartX - rBounds.Left, numY - rBounds.Top);
+                            rPath.Transform(m);
+                        }
+                        using (SolidBrush wb = new SolidBrush(Color.FromArgb(248, 250, 255))) g.FillPath(wb, rPath);
+
+                        float unitY = numY + rBounds.Height - ruBounds.Height - 1.2f * dpiScale;
+                        using (Matrix m = new Matrix())
+                        {
+                            m.Translate(rightStartX + rBounds.Width + 3.5f * dpiScale - ruBounds.Left, unitY - ruBounds.Top);
+                            ruPath.Transform(m);
+                        }
+                        Color rateUnitColor = isOptEnteringGame ? Color.FromArgb(255, 68, 79) : accent;
+                        using (SolidBrush ab = new SolidBrush(rateUnitColor)) g.FillPath(ab, ruPath);
+                    }
+
+                    // 3. Bottom Tactical Subtitle Badge ("极速超低延迟已激活" / "桌面节能平稳模式")
+                    string sub = isOptEnteringGame ? "极速超低延迟已激活" : "桌面节能平稳模式";
+                    float subSize = 7.5f * dpiScale;
+                    using (GraphicsPath sPath = new GraphicsPath())
+                    {
+                        sPath.AddString(sub, ffYaHei, (int)FontStyle.Bold, subSize, PointF.Empty, sf);
+                        RectangleF sBounds = sPath.GetBounds();
+
+                        float pillPadX = 7f * dpiScale;
+                        float pillPadY = 2f * dpiScale;
+                        float bDotD = 3.5f * dpiScale;
+                        float bDotGap = 4.5f * dpiScale;
+                        float pillW = bDotD + bDotGap + sBounds.Width + pillPadX * 2f;
+                        float pillH = sBounds.Height + pillPadY * 2f;
+                        float pillX = (Width - pillW) / 2f;
+                        float pillY = 51.5f * dpiScale;
+
+                        RectangleF pillRect = new RectangleF(pillX, pillY, pillW, pillH);
+                        using (GraphicsPath pillPath = RoundedCard.GetRoundRectF(pillRect, 3f * dpiScale))
+                        {
+                            using (SolidBrush pillBgBrush = new SolidBrush(Color.FromArgb(25, 30, 42)))
+                            {
+                                g.FillPath(pillBgBrush, pillPath);
+                            }
+                            using (Pen pillPen = new Pen(Color.FromArgb(48, 56, 74), 1f))
+                            {
+                                g.DrawPath(pillPen, pillPath);
+                            }
+                        }
+
+                        float dotX = pillX + pillPadX;
+                        float dotY = pillY + (pillH - bDotD) / 2f;
+                        using (SolidBrush dotBrush = new SolidBrush(accent))
+                        {
+                            g.FillEllipse(dotBrush, dotX, dotY, bDotD, bDotD);
+                        }
+
+                        using (Matrix mSub = new Matrix())
+                        {
+                            mSub.Translate(dotX + bDotD + bDotGap - sBounds.Left, pillY + pillPadY - sBounds.Top);
+                            sPath.Transform(mSub);
+                        }
+                        using (SolidBrush sb = new SolidBrush(Color.FromArgb(170, 185, 205)))
+                        {
+                            g.FillPath(sb, sPath);
+                        }
+                    }
+                    return;
+                }
 
                 if (isRateMode)
                 {

@@ -1012,6 +1012,25 @@ namespace RazerBatteryTray
                             connected = isKb ? ValkyrieDeviceHelper.CachedKbOnline : true;
                             batt = cachedVk > 0 ? cachedVk : (cfg.CachedBattery > 0 ? cfg.CachedBattery : -1);
                             friendlyName = isKb ? ValkyrieDeviceHelper.CachedKbName : ValkyrieDeviceHelper.CachedMouseName;
+                            if ((batt <= 0 || !connected) && !string.IsNullOrEmpty(cfg.HardwareFingerprint))
+                            {
+                                int fallbackBatt;
+                                bool fbChg;
+                                if (GenericHidHelper.QueryHidBattery(cfg.HardwareFingerprint, out fallbackBatt, out fbChg) && fallbackBatt > 0)
+                                {
+                                    batt = fallbackBatt;
+                                    connected = true;
+                                    if (isKb)
+                                    {
+                                        ValkyrieDeviceHelper.CachedKbBattery = batt;
+                                        ValkyrieDeviceHelper.CachedKbOnline = true;
+                                    }
+                                }
+                                else if (!connected && GenericHidHelper.IsDeviceConnected(cfg.HardwareFingerprint))
+                                {
+                                    connected = true;
+                                }
+                            }
                         }
                         else if (isRapoo)
                         {
@@ -1317,6 +1336,25 @@ namespace RazerBatteryTray
                     string key = d.DeviceId ?? "";
                     if (!vkGroups.ContainsKey(key)) vkGroups[key] = new List<MouseBatteryInfo>();
                     vkGroups[key].Add(d);
+                }
+                foreach (var kvp in vkGroups)
+                {
+                    if (kvp.Value.Count > 1)
+                    {
+                        var customEntry = kvp.Value.Find(x => x.IsCustom && !string.IsNullOrEmpty(x.CustomName));
+                        if (customEntry != null)
+                        {
+                            var vkPrimary = kvp.Value.Find(x => x.IsConnected && x.BatteryPercent > 0) ??
+                                            kvp.Value.Find(x => x.IsConnected) ??
+                                            kvp.Value.Find(x => x.IsDonglePresent) ??
+                                            kvp.Value[0];
+                            if (string.IsNullOrEmpty(vkPrimary.CustomName))
+                            {
+                                vkPrimary.CustomName = customEntry.CustomName;
+                                vkPrimary.IsCustom = true;
+                            }
+                        }
+                    }
                 }
                 foreach (var kvp in vkGroups)
                 {

@@ -1,4 +1,4 @@
-﻿// ============================================================================
+﻿﻿// ============================================================================
 // 模块名称: AddDeviceWizardForm.cs
 // 所属区域: UI/Forms (业务对话框层)
 // 核心职责:
@@ -32,9 +32,12 @@ namespace RazerBatteryTray
         private ModernButton btnScan;
         private ModernButton btnSave;
         private ModernButton btnCancel;
+        private ModernButton btnCopyPrompt;
+        private ModernButton btnAiTools;
         private WizardRadarBadge radarBadge;
         private ScanningBeamControl beamControl;
         private System.Windows.Forms.Timer autoScanDebounceTimer;
+        private System.Windows.Forms.Timer copyFeedbackTimer;
         private bool isScanning = false;
         private const int WM_DEVICECHANGE = 0x0219;
         private List<CustomDeviceConfig> scannedList = new List<CustomDeviceConfig>();
@@ -68,6 +71,12 @@ namespace RazerBatteryTray
                 autoScanDebounceTimer.Dispose();
                 autoScanDebounceTimer = null;
             }
+            if (copyFeedbackTimer != null)
+            {
+                copyFeedbackTimer.Stop();
+                copyFeedbackTimer.Dispose();
+                copyFeedbackTimer = null;
+            }
         }
 
         public AddDeviceWizardForm() : this(null, 1.0f) { }
@@ -99,7 +108,7 @@ namespace RazerBatteryTray
             }
 
             this.Text = "添加与配置外设向导";
-            this.ClientSize = new Size((int)(420 * dpiScale), (int)(510 * dpiScale));
+            this.ClientSize = new Size((int)(430 * dpiScale), (int)(576 * dpiScale));
             this.BackColor = Color.FromArgb(18, 19, 23);
             this.ForeColor = Color.White;
             this.StartPosition = FormStartPosition.CenterParent;
@@ -163,8 +172,8 @@ namespace RazerBatteryTray
             lstDevices.Font = new Font("Microsoft YaHei UI", 9.2F);
             lstDevices.DrawMode = DrawMode.OwnerDrawFixed;
             lstDevices.ItemHeight = (int)(52 * dpiScale);
-            lstDevices.Location = new Point(pad, (int)(73 * dpiScale));
-            lstDevices.Size = new Size(this.ClientSize.Width - (pad * 2), (int)(180 * dpiScale));
+            lstDevices.Location = new Point(pad, (int)(72 * dpiScale));
+            lstDevices.Size = new Size(this.ClientSize.Width - (pad * 2), (int)(150 * dpiScale));
             lstDevices.DrawItem += LstDevices_DrawItem;
             lstDevices.SelectedIndexChanged += (s, e) => OnDeviceSelected();
             lstDevices.HandleCreated += (s, e) => {
@@ -173,7 +182,7 @@ namespace RazerBatteryTray
             this.Controls.Add(lstDevices);
 
             // Row 4: Custom Nickname
-            int formY = (int)(264 * dpiScale);
+            int formY = (int)(230 * dpiScale);
             var lblName = new Label();
             lblName.Text = "自定义昵称:";
             lblName.Font = new Font("Microsoft YaHei UI", 8.8F);
@@ -189,7 +198,7 @@ namespace RazerBatteryTray
             this.Controls.Add(txtCustomName);
 
             // Row 5: Category Dropdown (ModernDarkDropdown)
-            formY += (int)(38 * dpiScale);
+            formY += (int)(36 * dpiScale);
             var lblCat = new Label();
             lblCat.Text = "外设类别:";
             lblCat.Font = new Font("Microsoft YaHei UI", 8.8F);
@@ -213,18 +222,126 @@ namespace RazerBatteryTray
             this.Controls.Add(cmbCategory);
 
             // Row 6: Live Status Box
-            formY += (int)(42 * dpiScale);
+            formY += (int)(38 * dpiScale);
             lblTestStatus = new Label();
             lblTestStatus.Text = "请从上方列表选择一个设备";
             lblTestStatus.Font = new Font("Microsoft YaHei UI", 8.8F, FontStyle.Bold);
             lblTestStatus.ForeColor = Color.FromArgb(0, 230, 118);
             lblTestStatus.Location = new Point(pad, formY);
-            lblTestStatus.Size = new Size(this.ClientSize.Width - (pad * 2), (int)(46 * dpiScale));
+            lblTestStatus.Size = new Size(this.ClientSize.Width - (pad * 2), (int)(38 * dpiScale));
             this.Controls.Add(lblTestStatus);
 
-            // Row 7: Buttons
+            // Row 7: AI Dedicated Card (Self Developer Hub)
+            int cardW = this.ClientSize.Width - (pad * 2);
+            int cardH = (int)(110 * dpiScale);
+            Panel pnlAiAdapter = new Panel();
+            pnlAiAdapter.Location = new Point(pad, (int)(350 * dpiScale));
+            pnlAiAdapter.Size = new Size(cardW, cardH);
+            pnlAiAdapter.BackColor = Color.FromArgb(22, 25, 34);
+            pnlAiAdapter.Paint += (s, e) =>
+            {
+                Graphics g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+                Rectangle rect = new Rectangle(0, 0, pnlAiAdapter.Width - 1, pnlAiAdapter.Height - 1);
+                using (GraphicsPath path = RoundedCard.GetRoundedRectangle(rect, (int)(7 * dpiScale)))
+                {
+                    using (SolidBrush bg = new SolidBrush(Color.FromArgb(22, 25, 34)))
+                    {
+                        g.FillPath(bg, path);
+                    }
+                    using (Pen borderPen = new Pen(Color.FromArgb(46, 54, 72), 1f))
+                    {
+                        g.DrawPath(borderPen, path);
+                    }
+                }
+            };
+            this.Controls.Add(pnlAiAdapter);
+
+            int cPad = (int)(12 * dpiScale);
+
+            Label lblAiTitle = new Label();
+            lblAiTitle.Text = "💡 找不到你的设备？试试自己做自己的开发者！";
+            lblAiTitle.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
+            lblAiTitle.ForeColor = Color.FromArgb(240, 245, 255);
+            lblAiTitle.Location = new Point(cPad, (int)(10 * dpiScale));
+            lblAiTitle.AutoSize = true;
+            pnlAiAdapter.Controls.Add(lblAiTitle);
+
+            Label lblAiSub = new Label();
+            lblAiSub.Text = "借助本地 AI Agent 工具自动探测外设通信与电量指令。";
+            lblAiSub.Font = new Font("Microsoft YaHei UI", 8.2F);
+            lblAiSub.ForeColor = Color.FromArgb(145, 155, 175);
+            lblAiSub.Location = new Point(cPad, (int)(32 * dpiScale));
+            lblAiSub.Size = new Size(cardW - cPad * 2, (int)(18 * dpiScale));
+            pnlAiAdapter.Controls.Add(lblAiSub);
+
+            int btnCopyW = (int)(205 * dpiScale);
+            int btnAiH = (int)(32 * dpiScale);
+            int btnAiY = (int)(58 * dpiScale);
+
+            btnCopyPrompt = new ModernButton();
+            btnCopyPrompt.Text = "📋 复制 AI 适配提示词";
+            btnCopyPrompt.Font = new Font("Microsoft YaHei UI", 8.5F, FontStyle.Bold);
+            btnCopyPrompt.NormalColor = Color.FromArgb(32, 42, 60);
+            btnCopyPrompt.HoverColor = Color.FromArgb(46, 60, 86);
+            btnCopyPrompt.PressedColor = Color.FromArgb(22, 30, 44);
+            btnCopyPrompt.BorderColor = Color.FromArgb(64, 82, 116);
+            btnCopyPrompt.TextColor = Color.FromArgb(220, 235, 255);
+            btnCopyPrompt.Location = new Point(cPad, btnAiY);
+            btnCopyPrompt.Size = new Size(btnCopyW, btnAiH);
+            btnCopyPrompt.Click += (s, e) =>
+            {
+                try
+                {
+                    Clipboard.SetText(GetAiAdaptationPrompt());
+                    btnCopyPrompt.Text = "✓ 提示词已复制！";
+                    btnCopyPrompt.NormalColor = Color.FromArgb(0, 160, 80);
+                    btnCopyPrompt.HoverColor = Color.FromArgb(0, 180, 90);
+                    btnCopyPrompt.BorderColor = Color.FromArgb(0, 200, 100);
+                    if (copyFeedbackTimer == null)
+                    {
+                        copyFeedbackTimer = new System.Windows.Forms.Timer();
+                        copyFeedbackTimer.Interval = 2500;
+                        copyFeedbackTimer.Tick += (s2, e2) =>
+                        {
+                            copyFeedbackTimer.Stop();
+                            btnCopyPrompt.Text = "📋 复制 AI 适配提示词";
+                            btnCopyPrompt.NormalColor = Color.FromArgb(32, 42, 60);
+                            btnCopyPrompt.HoverColor = Color.FromArgb(46, 60, 86);
+                            btnCopyPrompt.BorderColor = Color.FromArgb(64, 82, 116);
+                        };
+                    }
+                    copyFeedbackTimer.Stop();
+                    copyFeedbackTimer.Start();
+                }
+                catch { }
+            };
+            pnlAiAdapter.Controls.Add(btnCopyPrompt);
+
+            int btnToolsW = cardW - cPad * 2 - btnCopyW - (int)(10 * dpiScale);
+            btnAiTools = new ModernButton();
+            btnAiTools.Text = "🚀 获取推荐 AI 工具 ↗";
+            btnAiTools.Font = new Font("Microsoft YaHei UI", 8.5F, FontStyle.Bold);
+            btnAiTools.NormalColor = Color.FromArgb(28, 34, 48);
+            btnAiTools.HoverColor = Color.FromArgb(40, 50, 70);
+            btnAiTools.PressedColor = Color.FromArgb(20, 24, 34);
+            btnAiTools.BorderColor = Color.FromArgb(56, 70, 98);
+            btnAiTools.TextColor = Color.FromArgb(0, 210, 255);
+            btnAiTools.Location = new Point(cPad + btnCopyW + (int)(10 * dpiScale), btnAiY);
+            btnAiTools.Size = new Size(btnToolsW, btnAiH);
+            btnAiTools.Click += (s, e) =>
+            {
+                using (AiToolsDialog dlg = new AiToolsDialog(dpiScale))
+                {
+                    dlg.ShowDialog(this);
+                }
+            };
+            pnlAiAdapter.Controls.Add(btnAiTools);
+
+            // Row 8: Buttons
             int btnH = (int)(36 * dpiScale);
-            int btnY = (int)(456 * dpiScale);
+            int btnY = (int)(524 * dpiScale);
             int cancelW = (int)(110 * dpiScale);
             int saveW = (int)(150 * dpiScale);
 
@@ -809,6 +926,52 @@ namespace RazerBatteryTray
                 this.DialogResult = DialogResult.OK;
                 this.Close();
             }
+        }
+
+        public static string GetAiAdaptationPrompt()
+        {
+            return @"# 任务：为开源软件「FerrisPulse (灵脉)」专属适配我正在使用的硬件外设
+
+你好！我现在使用的外设设备暂未被「FerrisPulse (灵脉)」原生识别。请你作为专业的系统级硬件逆向与 C# 智能体工程师，帮助我完成当前电脑上连接设备的电量监控与性能适配。
+
+## ⚠️ 第 1 步必读：继承工程经验（杜绝踩坑）
+在动工编写任何代码之前，必须首先通读工程根目录下的 `docs/AGENT_HANDBOOK.md` 与 `AGENT_RULES.md`！
+本项目前序 AI 智能体已经沉淀了 11 大底层铁律与血泪经验（包括严格 C# 5.0 / .NET 4.0 语法基准、Win32 键盘 HID 0 权限握手、DWM 原生窗口抗白框状态机、测试全内存反射防句柄锁死等）。请务必全盘继承前序经验，切勿重复踩坑！
+
+## 2. 获取工程源码
+请使用 git 从以下官方仓库克隆最新完整源码：
+- GitHub (首选): https://github.com/Ferris-echo/FerrisPulse.git
+- Gitee (镜像): https://gitee.com/Ferris-echo/ferris-pulse.git
+
+## 3. 探测我当前物理连接的硬件设备
+请利用你的系统工具（如 PowerShell / Win32 SetupAPI / HID 接口查询等），自动检索我当前电脑接入的外设：
+1. 找出未被识别外设的 Vendor ID (VID)、Product ID (PID)、Usage / UsagePage 以及设备完整物理路径。
+2. 识别该外设的产品品牌、型号与连接形态（2.4G 接收器 / 蓝牙 BLE / 有线 USB）。
+
+## 4. 逆向与通信协议检索（发挥你的联网能力）
+请通过联网检索、开源社区逆向成果（如 OpenRGB、libratbag、Linux 内核驱动源码、hidapi、抓包分析等）查询该型号的私有通信报文：
+- 核心目标（必选）：实现精准电池电量读取（Battery Level 0-100%）与充电状态识别。
+- 扩展目标（如果是鼠标）：探测并尝试实现 DPI 档位读取/设置、X/Y 轴独立双轴调节、以及回报率（Hz）切换指令。
+
+## 5. 遵守项目的开发铁律与架构规范
+代码实现必须严格遵循：
+1. 编译器基准：严格使用 C# 5.0 语法（严禁使用 C# 6.0+ 语法，如 $""...""、?.、nameof），必须能够使用系统自带 csc.exe 通过根目录的 build.bat 零报错编译。
+2. 零外部依赖：仅允许引用 .NET 4.0 核心程序集，通信采用 Win32 HID P/Invoke，严禁引入 NuGet 包或第三方 DLL。
+3. 文件编码安全：所有新建或修改的源码文件必须严格保存为【UTF-8 with BOM】签名。
+4. 模块化落位：
+   - 若为已存在品牌（如 Razer, Logitech, Rapoo, Valkyrie 等）：在 src/Hardware/<Brand>DeviceHelper.cs 中增加该型号的识别与报文解析。
+   - 若为全新品牌：在 src/Hardware/ 下新建 <Brand>DeviceHelper.cs，并在 src/Hardware/DeviceManager.cs 中统一注册接入。
+   - 适配完成后，设备分类、电量与支持的特性无缝对接到主界面 UI（MainForm）与 OSD。
+
+## 6. 本地编译与回归测试验证
+在源码根目录下执行 cmd.exe /c ""build.bat"" 验证编译是否成功生成 FerrisPulse.exe，并运行相关自动化测试确保没有回归问题。
+
+## 7. 引导我向作者贡献代码（开源知识飞轮）
+适配成功并完成实测后，请为我整理一份简洁的贡献摘要（包含修改了哪些文件、适配了什么型号、设备 VID/PID 与报文细节），并引导我通过以下途径之一分享给作者合并入官方主线：
+- 方式 A：提交 GitHub Pull Request / Issue (https://github.com/Ferris-echo/FerrisPulse)
+- 方式 B：提交 Gitee Pull Request / Issue (https://gitee.com/Ferris-echo/ferris-pulse)
+- 方式 C：将代码变更或 patch 文件通过邮件/文本形式共享给作者
+作者会将你的适配成果永久纳入官方支持库，并在更新日志（CHANGELOG）与关于页面中为你署名致谢！";
         }
     }
 }

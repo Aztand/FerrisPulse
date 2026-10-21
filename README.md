@@ -95,6 +95,15 @@ build.bat
 
 我们非常欢迎社区极客共同丰富外设硬件支持库！
 
+### 🤖 设备未被识别？用 AI Agent 做自己的开发者！(AI-Powered Adaptation)
+找不到你的设备？**试试自己做自己的开发者！**  
+你可以借助本地 AI Agent（如 DeepSeek Harness、Tencent Workbuddy、Google Anti-gravity、OpenAI Codex 等），让智能体直接阅读我们的工程源码并自动探测你物理连接的外设通信报文与电量指令，完成一站式极客适配！
+
+👉 **查看完整中英双语 AI 适配指南与专属 Prompt：[AI 智能体专属外设适配指南 (docs/AI_DEVICE_ADAPTATION_GUIDE.md)](docs/AI_DEVICE_ADAPTATION_GUIDE.md)**
+
+---
+
+### 常规反馈方式
 如果你手里有尚未支持的无线鼠标/键盘（如雷捷、玄派、蜻蜓等国产新方案）：
 1. 欢迎在 **[Issues](https://github.com/Ferris-echo/FerrisPulse/issues)** 提交设备适配申请；
 2. 提供你的设备型号、连接方式（2.4G/有线）以及设备硬件 ID（`VID` 与 `PID`）；

@@ -1,6 +1,6 @@
-﻿# FerrisPulse AI 维护规范与工程准则 (AGENT RULES)
+# FerrisPulse AI 维护规范与工程准则 (AGENT RULES)
 
-> 本文档为所有介入维护本项目（FerrisPulse）的 AI Agent 及开发者的全局最高效力规范。任何修改与代码审查必须严格遵从以下 7 大铁律。
+> 本文档为所有介入维护本项目（FerrisPulse）的 AI Agent 及开发者的全局最高效力规范。任何修改与代码审查必须严格遵从以下 11 大铁律。
 
 ---
 
@@ -86,3 +86,28 @@
   - `resources/`：官方矢量图标与赞助二维码等正式只读资源。
 - **智能体收工自省 (Agent Self-Clean Duty)**:
   - 任何 AI Agent 在宣布任务完成前，必须执行 `git status` 审查工作区，主动清除临时文件，绝不允许将 scratch 垃圾遗留给用户。
+
+---
+
+## 8. DWM 原生弹窗动效与窗口状态机准则 (Native DWM Animation & White Flash Prevention)
+- **严禁 AnimateWindow**: `AnimateWindow` 属于传统 GDI 模拟，在 Win10/Win11 DWM 硬件合成架构下会触发离屏内存擦除，导致深色背景闪现刺眼的白色背景框，严禁在主窗体使用。
+- **RecreateHandle 状态机重塑**: 托盘呼出时必须调用 `this.RecreateHandle()` 销毁旧句柄并重新生成原生句柄，触发 DWM 将其识别为新窗口诞生，100% 重现原生居中缩放微光展开动效。
+- **坐标绝对锁定与底层擦除拦截**: 严格使用 `StartPosition = FormStartPosition.Manual` 原位展开；在 `WndProc` 中拦截 `WM_ERASEBKGND` 并重写 `OnPaintBackground`，彻底阻绝任何浅色底色闪烁。
+
+---
+
+## 9. 键盘 HID 0 权限握手与多通道隔离铁律 (Win32 Keyboard Security & Device Isolation)
+- **0 权限握手规避内核排他保护**: Windows 内核对键盘类设备有严格的防监听独占锁保护。使用 `GENERIC_READ` 打开键盘集合句柄会导致 `ERROR_ACCESS_DENIED` (5) 拒绝访问。打开键盘 HID 句柄必须传入权限参数 `0`（即 `FILE_READ_ATTRIBUTES`），方可安全执行 `HidD_GetFeature` 报文握手读取物理电量。
+- **键鼠同接收器独立分类管理**: 针对一个 2.4G 接收器同时连接键盘与鼠标的多模外设，`DeviceManager` 必须按 `DeviceCategory.Mouse` 与 `DeviceCategory.Keyboard` 实行物理通道隔离，严禁状态缓存互相覆盖。
+
+---
+
+## 10. 自动化测试防锁死铁律 (Zero-Lock Byte-Array Reflection Loading)
+- **严禁 Add-Type 路径独占**: 测试脚本严禁使用 `Add-Type -Path "FerrisPulse.exe"`，否则当前 PowerShell 宿主进程将独占持有可执行文件句柄，导致后续 `build.bat` 出现 `CS0016: Could not write to output file 'FerrisPulse.exe'` 致命编译冲突。
+- **强制全内存反射加载**: 必须使用 `[System.IO.File]::ReadAllBytes` 将二进制以纯字节流方式载入内存，再调用 `[System.Reflection.Assembly]::Load($bytes)` 反射解析，确保文件读取完毕后句柄瞬间释放，实现零冲突持续编译与测试。
+
+---
+
+## 11. Antigravity 平台终端路径注入避坑铁律 (Platform Path Injection & Local Build Safety)
+- **底层异常特征**: Windows 环境下工程路径包含中文或特殊字符（如 `·`）时，平台会话重载可能偶发将底层终端工作目录注入为带前导斜杠和引号的非法路径（如 `/"D:/FerrisPulse · 灵脉"`），导致 `run_command` 抛出 `Command failed to run: ...: no such directory.`。
+- **严禁死锁等待**: Agent 严禁在遭遇此报错时重复派生后台任务死循环等待；必须及时告知用户，引导在宿主环境终端执行 `cmd.exe /c "build.bat"` 或双击 `build.bat` 进行原生秒级编译。
