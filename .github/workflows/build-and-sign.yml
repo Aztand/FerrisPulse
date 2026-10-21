@@ -84,6 +84,14 @@ jobs:
           if ([string]::IsNullOrEmpty($ver) -or $ver -notmatch '^v') { $ver = "v2.1.1" }
           .\tools\build_release_zip.ps1 -Version $ver
 
+      - name: 上传已签名最终成品 (Signed Artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: FerrisPulse-Signed-Package
+          path: |
+            FerrisPulse.exe
+            FerrisPulse_*_Portable.zip
+
       - name: 发布至 GitHub Releases 附件
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
