@@ -1,0 +1,70 @@
+﻿{
+  "$schema": "https://raw.githubusercontent.com/Ferris-echo/FerrisPulse/main/schemas/fdas-v1.0.json",
+  "fdasVersion": "1.0",
+  "metadata": {
+    "brand": "MCHOSE",
+    "model": "A5 V2 Ultra",
+    "category": "Mouse",
+    "author": "冰城",
+    "description": "迈从 A5 V2 Ultra 2.4G/USB/蓝牙三模电竞鼠标，支持 PAW3395 传感器 XY 轴独立 DPI 与 8K 超高回报率。"
+  },
+  "hardware": {
+    "vendorId": "0x3837",
+    "productId": "0x1101",
+    "productString": "MCHOSE A5 V2 Ultra",
+    "manufacturerString": "Shenzhen Mchose Technology",
+    "endpointTopology": {
+      "usagePage": "0xFFA0",
+      "usage": "0x0001",
+      "reportType": "Interrupt",
+      "reportLength": 64,
+      "readTimeoutMs": 500
+    }
+  },
+  "capabilities": {
+    "battery": {
+      "reportId": "0x11",
+      "batteryPercentByteOffset": 4,
+      "chargingByteOffset": 5,
+      "chargingBitMask": "0x01",
+      "batteryFormula": "DirectPercent",
+      "sampleRxHex": "11 06 00 00 55 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    },
+    "mouse": {
+      "dpi": {
+        "minDpi": 50,
+        "maxDpi": 30000,
+        "step": 50,
+        "defaultStages": [400, 800, 1600, 3200, 6400],
+        "supportsXyIndependence": true,
+        "ratioPresets": ["1:1", "4:3", "16:10", "1.33"],
+        "activeStageByteOffset": 3,
+        "dpiXLoByteOffset": 4,
+        "dpiXHiByteOffset": 5,
+        "dpiYLoByteOffset": 6,
+        "dpiYHiByteOffset": 7,
+        "sampleDpiRxHex": "12 67 02 05 90 01 90 01 20 03 20 03 40 06 40 06 80 0C 80 0C 00 19 00 19"
+      },
+      "pollingRate": {
+        "supportedRates": [125, 500, 1000, 2000, 4000, 8000],
+        "defaultRate": 1000,
+        "maxRate": 8000,
+        "rateIndexMap": {
+          "125": 0,
+          "500": 1,
+          "1000": 2,
+          "2000": 3,
+          "4000": 4,
+          "8000": 5
+        }
+      }
+    }
+  },
+  "protocol": {
+    "queryBatteryTxHex": "11 06 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+    "queryDpiTxHex": "11 67 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+    "setDpiTxTemplate": "12 57 {stage} {stageCount} {dpiX_lo} {dpiX_hi} {dpiY_lo} {dpiY_hi}",
+    "setPollingRateTxTemplate": "11 41 {rateIndex} 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+    "checksumType": "None"
+  }
+}

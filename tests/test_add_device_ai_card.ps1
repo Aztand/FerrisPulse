@@ -28,12 +28,20 @@ if ($null -eq $tAiDlg) {
 }
 
 Write-Host "--- 测试 1: 验证 AddDeviceWizardForm 提示词内容契约 ---" -ForegroundColor Cyan
-$mGetPrompt = $tWizard.GetMethod("GetAiAdaptationPrompt", [System.Reflection.BindingFlags]'Public,Static')
+$mGetPrompt = $tWizard.GetMethod("GetAiAdaptationPrompt", [System.Reflection.BindingFlags]'Public,Static', $null, [System.Type]::EmptyTypes, $null)
 if ($null -eq $mGetPrompt) {
     Write-Host "FAIL: 未找到 GetAiAdaptationPrompt 静态方法！" -ForegroundColor Red
     exit 1
 }
 $prompt = [string]$mGetPrompt.Invoke($null, $null)
+
+$tConfig = $assembly.GetType("RazerBatteryTray.CustomDeviceConfig")
+$mGetPromptOverload = $tWizard.GetMethod("GetAiAdaptationPrompt", [System.Reflection.BindingFlags]'Public,Static', $null, @($tConfig, [string]), $null)
+if ($null -eq $mGetPromptOverload) {
+    Write-Host "FAIL: 未找到 GetAiAdaptationPrompt 设备指纹重载方法！" -ForegroundColor Red
+    exit 1
+}
+Write-Host "PASS: 已验证 GetAiAdaptationPrompt 无参及带设备指纹双重载契约" -ForegroundColor Green
 
 if (-not $prompt.Contains("AGENT_HANDBOOK.md") -or -not $prompt.Contains("AGENT_RULES.md")) {
     Write-Host "FAIL: 提示词未包含第 1 步必读 AGENT_HANDBOOK.md 与 AGENT_RULES.md！" -ForegroundColor Red

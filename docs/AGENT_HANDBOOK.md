@@ -1,4 +1,4 @@
-﻿# 📘 FerrisPulse · 灵脉 智能体实战操作与接力维护手册 (Agent Operational Handbook)
+﻿﻿# 📘 FerrisPulse · 灵脉 智能体实战操作与接力维护手册 (Agent Operational Handbook)
 
 > **致所有接手本项目的 AI Agent 伙伴**：  
 > 本手册凝聚了前序 Agent 在开发、重构、调试、测试与发布全生命周期中积累的全部实战经验与踩坑教训。  
@@ -407,3 +407,40 @@ powershell -ExecutionPolicy Bypass -File tools/publish_release.ps1 -Version "2.1
    - 接入了新的外设品牌协议（如达摩鲨、蜻蜓、魔导等）；
    - 优化了打包、签名或发布流水线；  
    **你必须主动修改本手册，将最新的经验、坑点与应对策略记录下来**，让项目的智慧代代相传，真正实现可持续演进！
+
+---
+
+## 8. FDAS v1.0 外设适配规范与智能体自动化融合流水线 (Automated Integration)
+
+为了彻底解决新外设逆向成果融合耗时、沟通成本高以及普通用户缺乏逆向环境的痛点，项目确立了 **FDAS v1.0 (FerrisPulse Device Adapter Specification)** 规范体系与自动化融合引擎：
+
+### 8.1 架构与运作全景图
+```
+【用户端】向导探测到未识别设备 ➡️ 点击【📋 复制带硬件指纹的 AI 提示词】（自动注入真实 VID/PID/Usage/报告长度）
+   ⬇
+【外部 AI 端】粘贴至 ChatGPT/DeepSeek ➡️ AI 识别芯片方案并输出 FDAS v1.0 规范包 (*.fp-adapter.json)
+   ⬇
+【项目端】运行自动化融合引擎:
+powershell -ExecutionPolicy Bypass -File tools/integrate_adaptation.ps1 -AdapterFile <path-to-json>
+   ⬇
+【结果】自动完成 Hex 样本断言、生成/更新 C# 5.0 驱动代码、挂载 DeviceManager、生成单元测试并跑通编译！
+```
+
+### 8.2 核心操作指令集
+1. **仅校验规范包（测试断言模式）**：
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File tools/integrate_adaptation.ps1 -AdapterFile examples/adapters/mchose_a5_v2_ultra.fp-adapter.json -ValidateOnly
+   ```
+2. **预演融合路径（DryRun）**：
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File tools/integrate_adaptation.ps1 -AdapterFile my_device.fp-adapter.json -DryRun
+   ```
+3. **正式自动化融合并回归验证**：
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File tools/integrate_adaptation.ps1 -AdapterFile my_device.fp-adapter.json
+   ```
+
+### 8.3 避坑与维护铁律
+1. **抓包样本强制闭环**：规范包内必须提供真实的 `sampleRxHex`（且必须通过 `tools/integrate_adaptation.ps1` 的样本回放断言），严禁合并凭空捏造的幻觉报文。
+2. **键盘 HID 0 权限握手**：键盘外设在 Win32 P/Invoke 时必须传 `0` 权限（`FILE_READ_ATTRIBUTES`），防 Windows 内核独占防监听锁死。
+3. **编码规范**：所有由规范包衍生出的驱动与测试文件，必须严格以 **UTF-8 with BOM** 编码保存。

@@ -1,0 +1,42 @@
+﻿{
+  "$schema": "https://raw.githubusercontent.com/Ferris-echo/FerrisPulse/main/schemas/fdas-v1.0.json",
+  "fdasVersion": "1.0",
+  "metadata": {
+    "brand": "Sony",
+    "model": "INZONE Buds (WF-G700N)",
+    "category": "Earbuds",
+    "author": "FerrisPulse 官方驱动组",
+    "description": "索尼 INZONE Buds 2.4GHz 无线游戏入耳式降噪耳机私有 HID 协议，支持左右耳塞与充电盒三节点独立电量与充电状态监控。"
+  },
+  "hardware": {
+    "vendorId": "0x054C",
+    "productId": "0x0EC2",
+    "productString": "INZONE Buds",
+    "manufacturerString": "Sony Corporation",
+    "endpointTopology": {
+      "usagePage": "0xFF04",
+      "usage": "0x0001",
+      "reportType": "Interrupt",
+      "reportLength": 64,
+      "readTimeoutMs": 500
+    }
+  },
+  "capabilities": {
+    "battery": {
+      "reportId": "0x02",
+      "multiEndpoints": ["Left", "Right", "Case"],
+      "leftBatteryByteOffset": 7,
+      "leftChargingByteOffset": 8,
+      "rightBatteryByteOffset": 9,
+      "rightChargingByteOffset": 10,
+      "caseBatteryByteOffset": 11,
+      "caseChargingByteOffset": 12,
+      "batteryFormula": "DirectPercent",
+      "sampleRxHex": "02 96 C3 41 04 01 00 50 00 4B 00 64 01 00 00 00 00 00 00 00"
+    }
+  },
+  "protocol": {
+    "queryBatteryTxHex": "02 96 C3 41 04 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+    "checksumType": "SonyInzone"
+  }
+}

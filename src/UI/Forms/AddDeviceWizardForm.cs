@@ -17,6 +17,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using System.Threading;
+using System.Text;
 using System.Windows.Forms;
 
 namespace RazerBatteryTray
@@ -294,8 +295,12 @@ namespace RazerBatteryTray
             {
                 try
                 {
-                    Clipboard.SetText(GetAiAdaptationPrompt());
-                    btnCopyPrompt.Text = "✓ 提示词已复制！";
+                    int selIdx = lstDevices.SelectedIndex;
+                    CustomDeviceConfig selItem = (selIdx >= 0 && selIdx < scannedList.Count) ? scannedList[selIdx] : null;
+                    string userTxt = txtCustomName != null ? txtCustomName.Text : null;
+                    string prompt = (selItem != null) ? GetAiAdaptationPrompt(selItem, userTxt) : GetAiAdaptationPrompt();
+                    Clipboard.SetText(prompt);
+                    btnCopyPrompt.Text = (selItem != null) ? "✓ 已复制含设备指纹的提示词！" : "✓ 提示词已复制！";
                     btnCopyPrompt.NormalColor = Color.FromArgb(0, 160, 80);
                     btnCopyPrompt.HoverColor = Color.FromArgb(0, 180, 90);
                     btnCopyPrompt.BorderColor = Color.FromArgb(0, 200, 100);
@@ -928,50 +933,226 @@ namespace RazerBatteryTray
             }
         }
 
+        private static bool TryExtractVidPid(string identifier, out int vid, out int pid)
+        {
+            vid = 0;
+            pid = 0;
+            if (string.IsNullOrEmpty(identifier)) return false;
+            string s = identifier.ToLowerInvariant();
+
+            int vidIdx = s.IndexOf("vid_");
+            int pidIdx = s.IndexOf("pid_");
+            if (vidIdx >= 0 && pidIdx >= 0)
+            {
+                try
+                {
+                    string vidStr = s.Substring(vidIdx + 4, 4);
+                    string pidStr = s.Substring(pidIdx + 4, 4);
+                    vid = Convert.ToInt32(vidStr, 16);
+                    pid = Convert.ToInt32(pidStr, 16);
+                    return true;
+                }
+                catch { }
+            }
+
+            string[] parts = s.Split(':');
+            for (int i = 0; i < parts.Length - 1; i++)
+            {
+                if (parts[i].Length == 4 && parts[i + 1].Length == 4)
+                {
+                    try
+                    {
+                        vid = Convert.ToInt32(parts[i], 16);
+                        pid = Convert.ToInt32(parts[i + 1], 16);
+                        return true;
+                    }
+                    catch { }
+                }
+            }
+
+            return false;
+        }
+
+        private static string LookupVendorBrand(int vid)
+        {
+            switch (vid)
+            {
+                case 0x1532: return "雷蛇 (Razer)";
+                case 0x046D: return "罗技 (Logitech)";
+                case 0x3837: return "迈从 (MCHOSE)";
+                case 0x5253: return "迈从 (MCHOSE)";
+                case 0x3419: return "VGN / VXE / ATK";
+                case 0x37D7: return "飞智 (Flydigi)";
+                case 0x320F: return "蓝图 (LAMZU)";
+                case 0x361D: return "狼蛛 (AULA)";
+                case 0x0C45: return "松翰 / 黑爵 (AJAZZ)";
+                case 0x258A: return "赛诺伟思 / 达摩鲨 (Darmoshark) / 多彩 (Delux)";
+                case 0x24AE: return "雷柏 (Rapoo)";
+                case 0x3554: return "瓦尔基里 (Valkyrie)";
+                case 0x054C: return "索尼 (Sony)";
+                case 0x1038: return "赛睿 (SteelSeries)";
+                case 0x1B1C: return "美商海盗船 (Corsair)";
+                case 0x0B05: return "华硕 ROG (ASUS ROG)";
+                case 0x045E: return "微软 (Microsoft / Xbox)";
+                case 0x03EB: return "怒喵 (Angry Miao)";
+                case 0x0951: return "极度未知 (HyperX)";
+                case 0x03F0: return "惠普 (HP / HyperX)";
+                case 0x17EF: return "联想拯救者 (Lenovo Legion)";
+                case 0x2E8A: return "NuPhy (矩阵科技)";
+                case 0x3434: return "Keychron (渴创)";
+                default: return "未登记厂商 (通用公版芯片方案)";
+            }
+        }
+
+        private static string ProbeDeviceDetails(CustomDeviceConfig item, out int vid, out int pid, out string romProd, out string romMfg)
+        {
+            vid = 0;
+            pid = 0;
+            romProd = "未知";
+            romMfg = "未知";
+            if (item == null) return "  * （未选中任何特定设备）";
+
+            string idToProbe = !string.IsNullOrEmpty(item.HardwareFingerprint) ? item.HardwareFingerprint : item.DeviceId;
+            TryExtractVidPid(idToProbe, out vid, out pid);
+            if (vid == 0 && pid == 0)
+            {
+                TryExtractVidPid(item.DeviceId, out vid, out pid);
+            }
+
+            if (vid == 0 && pid == 0)
+            {
+                return "  * （无法从设备标识中提取有效 VID:PID）";
+            }
+
+            StringBuilder sb = new StringBuilder();
+            try
+            {
+                List<HidDeviceDescriptor> descriptors = HidTransport.Enumerate(vid, pid);
+                if (descriptors != null && descriptors.Count > 0)
+                {
+                    for (int i = 0; i < descriptors.Count; i++)
+                    {
+                        var d = descriptors[i];
+                        if (!string.IsNullOrEmpty(d.ProductString) && romProd == "未知") romProd = d.ProductString;
+                        if (!string.IsNullOrEmpty(d.ManufacturerString) && romMfg == "未知") romMfg = d.ManufacturerString;
+
+                        sb.Append(string.Format("  * 端点 {0}: UsagePage=0x{1:X4}, Usage=0x{2:X4}, InLen={3}, OutLen={4}, FeatureLen={5}\r\n",
+                            i + 1, d.UsagePage, d.Usage, d.InputReportLength, d.OutputReportLength, d.FeatureReportLength));
+                    }
+                }
+                else
+                {
+                    sb.Append("  * （未探测到活跃的 HID 端点描述符，可能当前处于休眠或仅作为免驱外设枚举）\r\n");
+                }
+            }
+            catch (Exception ex)
+            {
+                sb.Append(string.Format("  * 探测发生异常: {0}\r\n", ex.Message));
+            }
+
+            return sb.ToString().TrimEnd();
+        }
+
         public static string GetAiAdaptationPrompt()
         {
-            return @"# 任务：为开源软件「FerrisPulse (灵脉)」专属适配我正在使用的硬件外设
+            return GetAiAdaptationPrompt(null, null);
+        }
 
-你好！我现在使用的外设设备暂未被「FerrisPulse (灵脉)」原生识别。请你作为专业的系统级硬件逆向与 C# 智能体工程师，帮助我完成当前电脑上连接设备的电量监控与性能适配。
+        public static string GetAiAdaptationPrompt(CustomDeviceConfig item, string userTypedName)
+        {
+            int vid = 0;
+            int pid = 0;
+            string romProd = "未知";
+            string romMfg = "未知";
+            string endpoints = (item != null) ? ProbeDeviceDetails(item, out vid, out pid, out romProd, out romMfg) : "  * （未在列表中指定特定设备）";
+            string brand = (vid != 0) ? LookupVendorBrand(vid) : "待反查厂商";
+            
+            string userRefName = !string.IsNullOrEmpty(userTypedName) ? userTypedName.Trim() : 
+                ((item != null && !string.IsNullOrEmpty(item.CustomName)) ? item.CustomName : (item != null ? item.OriginalName : "未指定"));
+            if (string.IsNullOrEmpty(userRefName)) userRefName = "未知设备";
 
-## ⚠️ 第 1 步必读：继承工程经验（杜绝踩坑）
-在动工编写任何代码之前，必须首先通读工程根目录下的 `docs/AGENT_HANDBOOK.md` 与 `AGENT_RULES.md`！
-本项目前序 AI 智能体已经沉淀了 11 大底层铁律与血泪经验（包括严格 C# 5.0 / .NET 4.0 语法基准、Win32 键盘 HID 0 权限握手、DWM 原生窗口抗白框状态机、测试全内存反射防句柄锁死等）。请务必全盘继承前序经验，切勿重复踩坑！
+            string catStr = "Mouse";
+            string catCn = "鼠标";
+            if (item != null)
+            {
+                catCn = MouseBatteryInfo.GetCategoryDisplayName(item.Category);
+                switch (item.Category)
+                {
+                    case DeviceCategory.Keyboard: catStr = "Keyboard"; break;
+                    case DeviceCategory.Headset: catStr = "Headset"; break;
+                    case DeviceCategory.Earbuds: catStr = "Earbuds"; break;
+                    case DeviceCategory.Gamepad: catStr = "Gamepad"; break;
+                    case DeviceCategory.Dongle: catStr = "Dongle"; break;
+                    case DeviceCategory.Generic: catStr = "Generic"; break;
+                    default: catStr = "Mouse"; break;
+                }
+            }
 
-## 2. 获取工程源码
-请使用 git 从以下官方仓库克隆最新完整源码：
-- GitHub (首选): https://github.com/Ferris-echo/FerrisPulse.git
-- Gitee (镜像): https://gitee.com/Ferris-echo/ferris-pulse.git
-
-## 3. 探测我当前物理连接的硬件设备
-请利用你的系统工具（如 PowerShell / Win32 SetupAPI / HID 接口查询等），自动检索我当前电脑接入的外设：
-1. 找出未被识别外设的 Vendor ID (VID)、Product ID (PID)、Usage / UsagePage 以及设备完整物理路径。
-2. 识别该外设的产品品牌、型号与连接形态（2.4G 接收器 / 蓝牙 BLE / 有线 USB）。
-
-## 4. 逆向与通信协议检索（发挥你的联网能力）
-请通过联网检索、开源社区逆向成果（如 OpenRGB、libratbag、Linux 内核驱动源码、hidapi、抓包分析等）查询该型号的私有通信报文：
-- 核心目标（必选）：实现精准电池电量读取（Battery Level 0-100%）与充电状态识别。
-- 扩展目标（如果是鼠标）：探测并尝试实现 DPI 档位读取/设置、X/Y 轴独立双轴调节、以及回报率（Hz）切换指令。
-
-## 5. 遵守项目的开发铁律与架构规范
-代码实现必须严格遵循：
-1. 编译器基准：严格使用 C# 5.0 语法（严禁使用 C# 6.0+ 语法，如 $""...""、?.、nameof），必须能够使用系统自带 csc.exe 通过根目录的 build.bat 零报错编译。
-2. 零外部依赖：仅允许引用 .NET 4.0 核心程序集，通信采用 Win32 HID P/Invoke，严禁引入 NuGet 包或第三方 DLL。
-3. 文件编码安全：所有新建或修改的源码文件必须严格保存为【UTF-8 with BOM】签名。
-4. 模块化落位：
-   - 若为已存在品牌（如 Razer, Logitech, Rapoo, Valkyrie 等）：在 src/Hardware/<Brand>DeviceHelper.cs 中增加该型号的识别与报文解析。
-   - 若为全新品牌：在 src/Hardware/ 下新建 <Brand>DeviceHelper.cs，并在 src/Hardware/DeviceManager.cs 中统一注册接入。
-   - 适配完成后，设备分类、电量与支持的特性无缝对接到主界面 UI（MainForm）与 OSD。
-
-## 6. 本地编译与回归测试验证
-在源码根目录下执行 cmd.exe /c ""build.bat"" 验证编译是否成功生成 FerrisPulse.exe，并运行相关自动化测试确保没有回归问题。
-
-## 7. 引导我向作者贡献代码（开源知识飞轮）
-适配成功并完成实测后，请为我整理一份简洁的贡献摘要（包含修改了哪些文件、适配了什么型号、设备 VID/PID 与报文细节），并引导我通过以下途径之一分享给作者合并入官方主线：
-- 方式 A：提交 GitHub Pull Request / Issue (https://github.com/Ferris-echo/FerrisPulse)
-- 方式 B：提交 Gitee Pull Request / Issue (https://gitee.com/Ferris-echo/ferris-pulse)
-- 方式 C：将代码变更或 patch 文件通过邮件/文本形式共享给作者
-作者会将你的适配成果永久纳入官方支持库，并在更新日志（CHANGELOG）与关于页面中为你署名致谢！";
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("# 任务：为「FerrisPulse (灵脉)」开源外设系统生成 FDAS v1.0 硬件适配规范包");
+            sb.AppendLine();
+            sb.AppendLine("你好！我现在使用的外设设备暂未被「FerrisPulse (灵脉)」原生识别。请作为资深系统级硬件逆向与 C# 智能体工程师，根据以下从当前物理硬件中实时捕获的硬件现场指纹与通信拓扑，为我输出一份符合 **FDAS v1.0 (FerrisPulse Device Adapter Specification)** 标准的适配规范包（JSON）。");
+            sb.AppendLine();
+            sb.AppendLine("## ⚠️ 第 1 步必读：继承工程经验（杜绝踩坑）");
+            sb.AppendLine("在动工前，必须首先参阅工程根目录下的 `docs/AGENT_HANDBOOK.md`、`AGENT_RULES.md` 与 `docs/ADAPTER_SPECIFICATION.md`！");
+            sb.AppendLine("本项目已沉淀 11 大底层铁律（严格 C# 5.0 / .NET 4.0 语法基准、Win32 键盘 HID 0 权限握手避内核拦截、DWM 原生窗口抗白框、测试全内存反射防句柄锁死等），请务必全盘继承前序经验！");
+            sb.AppendLine();
+            sb.AppendLine("## 2. 官方源码仓库与规范索引");
+            sb.AppendLine("- GitHub (首选): https://github.com/Ferris-echo/FerrisPulse.git");
+            sb.AppendLine("- Gitee (镜像): https://gitee.com/Ferris-echo/ferris-pulse.git");
+            sb.AppendLine("- 规范文档: docs/ADAPTER_SPECIFICATION.md");
+            sb.AppendLine();
+            sb.AppendLine("## 3. 智能体反查与防错铁律（侦探法则）");
+            sb.AppendLine("1. **绝不盲目信任用户输入名称**：");
+            sb.AppendLine(string.Format("   - 界面上用户输入的参考名称为：【{0}】（此名称由用户手工录入，可能极不精准、存在错别字或仅填了“鼠标/耳机”等通用词）。", userRefName));
+            if (vid != 0)
+            {
+                sb.AppendLine(string.Format("   - **你必须以物理真理为准**：请优先基于下方的 VID: 0x{0:X4} 与 PID: 0x{1:X4}、芯片固件原名「{2}」以及硬件厂商「{3}」，调用你的知识库、全球 USB 硬件库或网络检索，反查其真实官方商业品牌与具体设备型号！", vid, pid, romProd, romMfg));
+            }
+            else
+            {
+                sb.AppendLine("   - **你必须以物理真理为准**：请基于设备的硬件指纹反查真实官方商业品牌与具体设备型号！");
+            }
+            sb.AppendLine("2. **芯片方案与通信拓扑推导**：");
+            sb.AppendLine("   - 结合下方列出的通信端点（UsagePage、Usage、报告长度），识别其采用的主控与无线方案（如 Nordic nRF52840 / 52833、博通 Beken、合泰 Holtek、赛诺伟思 CX52850、原相 PAW3395/3950 等公版通信协议）。");
+            sb.AppendLine("   - 若为鼠标：必须同时适配【精准电量/充电状态】、【DPI 各档位/步进/XY轴分离规则】以及【回报率数组(125~8000Hz)及切换指令】！");
+            sb.AppendLine("   - 若为非鼠标（键盘/手柄/耳机/耳塞）：必须适配【精准电量/充电状态】，耳塞需支持三节点独立电量。");
+            sb.AppendLine("3. **抓包样本闭环铁律（杜绝凭空捏造）**：");
+            sb.AppendLine("   - 规范包中必须提供一组与实际协议一致的抓包 Hex 样本（sampleRxHex 与 sampleTxHex），以便 FerrisPulse 自动化测试套件进行回放验证。");
+            sb.AppendLine();
+            sb.AppendLine("## 4. 当前硬件现场物理指纹（由 FerrisPulse 硬件探针实时捕获）：");
+            sb.AppendLine(string.Format("- 设备推测分类: {0} ({1})", catStr, catCn));
+            sb.AppendLine(string.Format("- 用户参考名称: {0}", userRefName));
+            sb.AppendLine(string.Format("- 透视厂商归属: {0}", brand));
+            sb.AppendLine(string.Format("- 物理硬件 ID: VID = 0x{0:X4}, PID = 0x{1:X4}", vid, pid));
+            sb.AppendLine(string.Format("- 芯片 ROM 固件原名: {0}", romProd));
+            sb.AppendLine(string.Format("- 芯片 ROM 厂商原名: {0}", romMfg));
+            sb.AppendLine(string.Format("- 连接物理通道: {0}", (item != null) ? (item.Transport ?? "2.4G/USB") : "未知"));
+            sb.AppendLine("- HID 通信拓扑端点列表:");
+            sb.AppendLine(endpoints);
+            sb.AppendLine();
+            sb.AppendLine("## 5. 输出要求与契约规范");
+            sb.AppendLine("请严格输出一个 Markdown JSON 代码块（```json ... ```），内容必须完全符合 FDAS v1.0 规范，包含以下分区：");
+            sb.AppendLine("1. `metadata`: brand, model (纠正后的真实官方型号), category, author, description");
+            sb.AppendLine("2. `hardware`: vendorId, productId, endpointTopology (选定用于私有通信的主 UsagePage/Usage/Length)");
+            sb.AppendLine("3. `capabilities`:");
+            sb.AppendLine("   - `battery`: reportId, batteryPercentByteOffset, chargingByteOffset, chargingBitMask, batteryFormula, sampleRxHex");
+            if (item == null || item.Category == DeviceCategory.Mouse)
+            {
+                sb.AppendLine("   - `mouse`:");
+                sb.AppendLine("     - `dpi`: minDpi, maxDpi, step, defaultStages, supportsXyIndependence, ratioPresets, activeStageByteOffset, dpiXLoByteOffset, dpiXHiByteOffset, dpiYLoByteOffset, dpiYHiByteOffset, sampleDpiRxHex");
+                sb.AppendLine("     - `pollingRate`: supportedRates, defaultRate, maxRate, rateIndexMap");
+            }
+            sb.AppendLine("4. `protocol`:");
+            sb.AppendLine("   - queryBatteryTxHex (若需主动查询)");
+            if (item == null || item.Category == DeviceCategory.Mouse)
+            {
+                sb.AppendLine("   - setDpiTxTemplate, setPollingRateTxTemplate");
+            }
+            sb.AppendLine("   - checksumType (None / SumMod256 / XorSum / SonyInzone)");
+            sb.AppendLine();
+            sb.AppendLine("请直接输出该设备的 FDAS v1.0 标准 JSON 代码块，用户将直接把文件导入 FerrisPulse 自动点亮外设！");
+            return sb.ToString();
         }
     }
 }
