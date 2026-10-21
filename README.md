@@ -122,7 +122,9 @@ build.bat
 | **[@TonySen1](https://github.com/TonySen1)** | 极限排查罗技 Lightspeed (C547) 接收器双端点竞争、HID++ 2.0 Ping 命令根函数与 0x1004 统一电量解析，主导 **G502 X PLUS** 与罗技底层驱动重构 | [#15](https://github.com/Ferris-echo/FerrisPulse/issues/15) |
 | **[@Afang555](https://github.com/Afang555)** | 独立编写并开源贡献**玄派玄熊猫 P1** (1K / 4K / 有线) 完整适配源码，推进国产新势力电竞外设生态 | [#21](https://github.com/Ferris-echo/FerrisPulse/issues/21) |
 | **[@leviswhite527](https://github.com/leviswhite527)** | 提供**怒喵 AM Infinity .97** 62 字节 RACE 协议与 **ATK A9 AIR / X1 V2** 8K 报文资料，拓展客制化与超高回报率外设矩阵 | [#25](https://github.com/Ferris-echo/FerrisPulse/issues/25) |
-| **群友“冰城”** | 深度逆向**迈从 A5 V2 Ultra** 三模电竞鼠标私有 WebHID 协议，贡献 0x11/0x06 物理电量与 0x12 XY 轴独立 DPI 读写及 8K 回报率全套实现 | 社区贡献 |
+| **群友“无情卍空虚”** | 独立研发并提交**赛睿 Arctis Nova 5 / 5X** 完整补丁，攻破 0x00B0 报文状态查询与解析，奠定赛睿音频外设生态 | 社区补丁贡献 |
+| **群友“okbeng”** | USBPcap 逆向突破雷蛇**旋风黑鲨 V2 Pro 2.4G (BlackShark V2 Pro)** 64 字节中断端点 PA/PI 专属协议，并适配 DeathAdder V2 X HyperSpeed 14K | 社区贡献 |
+| **群友“冰城”** | 深度逆向**迈从 A5 V2 Ultra** 三模电竞鼠标 WebHID 协议（电量、XY轴独立DPI与8K回报率）；再次奉献攻克**罗技 G PRO X Wireless** 耳机 HID++ 4.2 专属 0x1F20 ADC 毫伏放电曲线算法！ | 社区贡献 |
 | **[@lililixxx1](https://github.com/lililixxx1)** | 真机实测并定版雷蛇 **Viper V3 HyperSpeed** 板载按键映射协议与底层 Hardware 驱动命令架构 | [#7](https://github.com/Ferris-echo/FerrisPulse/issues/7), [#13](https://github.com/Ferris-echo/FerrisPulse/issues/13) |
 
 > 💡 **期待你的名字镌刻在此！**  

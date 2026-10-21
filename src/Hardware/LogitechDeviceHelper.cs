@@ -2,7 +2,8 @@
 // 模块名称: LogitechDeviceHelper.cs
 // 所属区域: Hardware (硬件驱动层)
 // 核心职责:
-//   罗技 (Logitech) HID++ 1.0/2.0 私有协议通信、电量检测、DPI调节 (Feature 0x2201/0x2202 支持XY轴独立) 与回报率设置 (Feature 0x8060/0x8061 最高8000Hz) 实现
+//   罗技 (Logitech) HID++ 1.0/2.0 私有协议通信、电量检测、DPI调节 (Feature 0x2201/0x2202 支持XY轴独立) 与回报率设置 (Feature 0x8060/0x8061 最高8000Hz) 实现
+//   另含 G PRO X Wireless 耳机 (046D:0ABA) 专属 HID++ 4.2 电量通道 (Feature 0x1F20 ADC_MEASUREMENT)
 // 依赖关系: NativeMethods.cs, MouseBatteryInfo.cs
 //
 // ⚠️ AI 维护准则 (AI MAINTENANCE DIRECTIVE - DO NOT REMOVE) ⚠️:
@@ -408,7 +409,8 @@ public static class LogitechDeviceHelper
             case 0x409B: return "Logitech G PRO X 60 游戏键盘";
             case 0x4088: return "Logitech G733 LIGHTSPEED 耳机";
             case 0x4097: return "Logitech G PRO X 2 LIGHTSPEED 耳机";
-            case 0x408C: return "Logitech G PRO X Wireless 游戏耳机";
+            case 0x408C:
+            case 0x0ABA: return "Logitech G PRO X Wireless 游戏耳机";
             case 0x4085: return "Logitech G435 无线耳机";
             case 0x4080: return "Logitech G533 无线耳机";
             case 0x407B: return "Logitech G935 无线耳机";
@@ -465,12 +467,259 @@ public static class LogitechDeviceHelper
         public ushort Usage;
     }
 
+    // ========================================================================
+    // Logitech G PRO X Wireless 耳机（046D:0ABA）专属 HID++ 4.2 电量通道
+    // 该型号没有标准 0x1000/0x1004 电量特性，电量来自 0x1F20 ADC_MEASUREMENT。
+    // 帧格式（Report 0x11 / 0xFF43，20 字节）：
+    //   Ping:  11 FF 00 1B 00 00 <mark>
+    //   Feat:  11 FF 00 0B 1F 20
+    //   ADC:   11 FF <featIdx> 0B
+    // 回复 ADC: 11 FF <featIdx> 0B <mvHi> <mvLo> <flags>
+    // flags bit0=有效，bit1=正在充电。
+    // ========================================================================
+
+    public static int ProXVoltageToPercent(int millivolts)
+    {
+        int[] volts = new int[] { 4200, 4100, 4000, 3900, 3800, 3777, 3750, 3700, 3650, 3600, 3550, 3500 };
+        int[] pcts = new int[] { 100, 90, 80, 70, 60, 57, 50, 40, 30, 20, 10, 0 };
+
+        if (millivolts >= volts[0]) return 100;
+        if (millivolts <= volts[volts.Length - 1]) return 0;
+
+        for (int i = 0; i < volts.Length - 1; i++)
+        {
+            if (millivolts <= volts[i] && millivolts >= volts[i + 1])
+            {
+                int vHigh = volts[i];
+                int vLow = volts[i + 1];
+                int pHigh = pcts[i];
+                int pLow = pcts[i + 1];
+                double ratio = (double)(millivolts - vLow) / (double)(vHigh - vLow);
+                return (int)Math.Round(pLow + (pHigh - pLow) * ratio);
+            }
+        }
+        return 0;
+    }
+
+    public static bool ParseProXAdcPayload(byte[] payload, out int millivolts, out int flags)
+    {
+        millivolts = 0;
+        flags = 0;
+        if (payload == null || payload.Length < 3) return false;
+        millivolts = (payload[0] << 8) | payload[1];
+        flags = payload[2];
+        return millivolts >= 2500 && millivolts <= 4300;
+    }
+
+    private static MouseBatteryInfo BuildProXHeadsetInfo(int battery, bool charging, bool connected, DateTime lastUpdated)
+    {
+        string deviceId = "Logitech:046D:0ABA";
+        MouseBatteryInfo info = new MouseBatteryInfo();
+        info.DeviceId = deviceId;
+        info.HardwareFingerprint = deviceId;
+        info.HardwareId = deviceId;
+        info.Brand = "Logitech";
+        info.Category = DeviceCategory.Headset;
+        info.DeviceName = "Logitech G PRO X Wireless 游戏耳机";
+        info.Transport = "Lightspeed 无线";
+        info.IsCustom = false;
+        info.IsConnected = connected;
+        info.IsSleeping = !connected;
+        info.IsDonglePresent = true;
+        info.BatteryPercent = battery;
+        info.ExactBatteryPercent = battery;
+        info.IsCharging = charging;
+        info.LastUpdated = lastUpdated;
+        info.Dpi = 0;
+        info.DpiY = 0;
+        info.PollingRate = 0;
+        info.MaxPollingRate = 0;
+        info.SupportedPollingRates = null;
+        info.DpiStages = null;
+        info.DpiStagesY = null;
+        return info;
+    }
+
+    private static MouseBatteryInfo QueryProXHeadsetViaHidpp(IntPtr handle, IntPtr hEvent, HIDP_CAPS caps, string product)
+    {
+        byte sw = 0x0B;
+        byte mark = 0x5A;
+        int inLen = caps.InputReportByteLength;
+        if (inLen < 7) return null;
+
+        byte[] ping = new byte[inLen];
+        ping[0] = 0x11;
+        ping[1] = 0xFF;
+        ping[2] = 0x00;
+        ping[3] = (byte)(0x10 | sw);
+        ping[6] = mark;
+        byte[] rx = SendAndReceive(handle, hEvent, ping, inLen, 400);
+
+        string deviceId = "Logitech:046D:0ABA";
+        if (rx == null || rx.Length < 7 || rx[6] != mark)
+        {
+            int cached = GetCachedBatteryForDevice(deviceId);
+            if (cached >= 0)
+            {
+                return BuildProXHeadsetInfo(cached, CachedIsCharging, false, CachedLastUpdated != DateTime.MinValue ? CachedLastUpdated : DateTime.Now);
+            }
+            return BuildProXHeadsetInfo(-1, false, false, DateTime.Now);
+        }
+
+        byte[] feat = new byte[inLen];
+        feat[0] = 0x11;
+        feat[1] = 0xFF;
+        feat[2] = 0x00;
+        feat[3] = sw;
+        feat[4] = 0x1F;
+        feat[5] = 0x20;
+        byte[] rf = SendAndReceive(handle, hEvent, feat, inLen, 300);
+        if (rf == null || rf.Length < 5 || rf[4] == 0)
+        {
+            int cached = GetCachedBatteryForDevice(deviceId);
+            return BuildProXHeadsetInfo(cached, CachedIsCharging, true, DateTime.Now);
+        }
+
+        byte featIdx = rf[4];
+        byte[] adc = new byte[inLen];
+        adc[0] = 0x11;
+        adc[1] = 0xFF;
+        adc[2] = featIdx;
+        adc[3] = sw;
+        byte[] ra = SendAndReceive(handle, hEvent, adc, inLen, 350);
+        if (ra == null || ra.Length < 7)
+        {
+            int cached = GetCachedBatteryForDevice(deviceId);
+            return BuildProXHeadsetInfo(cached, CachedIsCharging, true, DateTime.Now);
+        }
+
+        int millivolts;
+        int flags;
+        bool valid = ParseProXAdcPayload(new byte[] { ra[4], ra[5], ra[6] }, out millivolts, out flags);
+        if (!valid)
+        {
+            int cached = GetCachedBatteryForDevice(deviceId);
+            return BuildProXHeadsetInfo(cached, CachedIsCharging, true, DateTime.Now);
+        }
+
+        bool adcValid = (flags & 0x01) != 0;
+        bool charging = adcValid && ((flags & 0x02) != 0);
+        int percent = ProXVoltageToPercent(millivolts);
+        if (!adcValid)
+        {
+            int cached = GetCachedBatteryForDevice(deviceId);
+            return BuildProXHeadsetInfo(cached, CachedIsCharging, true, DateTime.Now);
+        }
+
+        CachedBatteryPercent = percent;
+        CachedIsCharging = charging;
+        CachedLastUpdated = DateTime.Now;
+        CachedDeviceName = "Logitech G PRO X Wireless 游戏耳机";
+        HasValidHardwareReading = true;
+        deviceBatteryCache[deviceId] = percent;
+        SaveHardwareCache();
+        return BuildProXHeadsetInfo(percent, charging, true, DateTime.Now);
+    }
+
+    public static MouseBatteryInfo QueryLogitechProXHeadset()
+    {
+        Guid hidGuid;
+        HidD_GetHidGuid(out hidGuid);
+        IntPtr devInfo = SetupDiGetClassDevs(ref hidGuid, null, IntPtr.Zero, 0x12);
+        if (devInfo == IntPtr.Zero || devInfo == new IntPtr(-1)) return null;
+
+        SP_DEVICE_INTERFACE_DATA ifData = new SP_DEVICE_INTERFACE_DATA();
+        ifData.cbSize = Marshal.SizeOf(ifData);
+        uint memberIdx = 0;
+
+        try
+        {
+            while (SetupDiEnumDeviceInterfaces(devInfo, IntPtr.Zero, ref hidGuid, memberIdx++, ref ifData))
+            {
+                uint reqSize;
+                SetupDiGetDeviceInterfaceDetail(devInfo, ref ifData, IntPtr.Zero, 0, out reqSize, IntPtr.Zero);
+                if (reqSize == 0) continue;
+
+                IntPtr detailBuffer = Marshal.AllocHGlobal((int)reqSize);
+                try
+                {
+                    Marshal.WriteInt32(detailBuffer, IntPtr.Size == 8 ? 8 : 5);
+                    if (!SetupDiGetDeviceInterfaceDetail(devInfo, ref ifData, detailBuffer, reqSize, out reqSize, IntPtr.Zero)) continue;
+
+                    string path = Marshal.PtrToStringUni(new IntPtr(detailBuffer.ToInt64() + 4));
+                    if (string.IsNullOrEmpty(path) || path.IndexOf("vid_046d", StringComparison.OrdinalIgnoreCase) < 0) continue;
+
+                    IntPtr handle = CreateFile(
+                        path,
+                        GENERIC_READ | GENERIC_WRITE,
+                        FILE_SHARE_READ | FILE_SHARE_WRITE,
+                        IntPtr.Zero,
+                        OPEN_EXISTING,
+                        FILE_FLAG_OVERLAPPED,
+                        IntPtr.Zero);
+                    if (handle == IntPtr.Zero || handle == new IntPtr(-1)) continue;
+
+                    try
+                    {
+                        HIDD_ATTRIBUTES attr = new HIDD_ATTRIBUTES();
+                        attr.Size = Marshal.SizeOf(attr);
+                        if (!HidD_GetAttributes(handle, ref attr)) continue;
+                        if (attr.VendorID != 0x046D || attr.ProductID != 0x0ABA) continue;
+
+                        IntPtr preparsed;
+                        if (!HidD_GetPreparsedData(handle, out preparsed)) continue;
+                        HIDP_CAPS caps;
+                        int capsStatus = HidP_GetCaps(preparsed, out caps);
+                        HidD_FreePreparsedData(preparsed);
+                        if (capsStatus != 0x00110000) continue;
+                        if (caps.UsagePage != 0xFF43 || caps.InputReportByteLength < 7) continue;
+
+                        StringBuilder sb = new StringBuilder(256);
+                        string product = HidD_GetProductString(handle, sb, sb.Capacity) ? sb.ToString().Trim() : "";
+
+                        IntPtr hEvent = CreateEvent(IntPtr.Zero, true, false, null);
+                        if (hEvent == IntPtr.Zero) continue;
+                        try
+                        {
+                            return QueryProXHeadsetViaHidpp(handle, hEvent, caps, product);
+                        }
+                        finally
+                        {
+                            CloseHandle(hEvent);
+                        }
+                    }
+                    finally
+                    {
+                        CloseHandle(handle);
+                    }
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(detailBuffer);
+                }
+            }
+        }
+        finally
+        {
+            SetupDiDestroyDeviceInfoList(devInfo);
+        }
+        return null;
+    }
+
     public static List<MouseBatteryInfo> QueryAllLogitechDevices()
     {
         lock (hidLock)
         {
             List<MouseBatteryInfo> results = new List<MouseBatteryInfo>();
-            List<LogitechRawEndpoint> rawEndpoints = new List<LogitechRawEndpoint>();
+            List<LogitechRawEndpoint> rawEndpoints = new List<LogitechRawEndpoint>();
+
+            try
+            {
+                MouseBatteryInfo headset = QueryLogitechProXHeadset();
+                if (headset != null) results.Add(headset);
+            }
+            catch { }
+
 
             Guid hidGuid;
             HidD_GetHidGuid(out hidGuid);
@@ -596,6 +845,7 @@ public static class LogitechDeviceHelper
 
                 int foundVid = bestEndpoint.VendorId;
                 int foundPid = bestEndpoint.ProductId;
+                if (foundPid == 0x0ABA) continue; // G PRO X 耳机已由专属通道 QueryLogitechProXHeadset() 处理
                 string foundName = bestEndpoint.ProductString;
 
                 IntPtr handle = CreateFile(

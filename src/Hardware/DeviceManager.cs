@@ -54,7 +54,7 @@ namespace RazerBatteryTray
                     cleanSuffix = cleanSuffix.Substring(0, cleanSuffix.Length - 3);
                 }
 
-                string[] commonPrefixes = new string[] { "Gaming", "HID", "Valkyrie", "Rapoo", "VGN", "Logitech", "Apple", "AppleHID", "AppleBT", "BT", "BLE", "HyperX", "Flydigi", "MCHOSE", "Sony" };
+                string[] commonPrefixes = new string[] { "Gaming", "HID", "Valkyrie", "Rapoo", "VGN", "Logitech", "Apple", "AppleHID", "AppleBT", "BT", "BLE", "HyperX", "Flydigi", "MCHOSE", "Sony", "SteelSeries" };
                 for (int i = 0; i < commonPrefixes.Length; i++)
                 {
                     string p = commonPrefixes[i];
@@ -473,6 +473,23 @@ namespace RazerBatteryTray
             catch { }
         }
 
+        public static void CleanupDuplicateSteelSeriesDevices()
+        {
+            try
+            {
+                var customConfigs = LoadCustomDevices();
+                foreach (var c in customConfigs)
+                {
+                    if (c.DeviceId != null && (c.DeviceId.StartsWith("HID:1038:2232", StringComparison.OrdinalIgnoreCase) ||
+                                               c.DeviceId.StartsWith("HID:1038:2253", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        DeleteCustomDevice(c.DeviceId);
+                    }
+                }
+            }
+            catch { }
+        }
+
         public static void CleanupDuplicateHyperXDevices()
         {
             try
@@ -608,7 +625,8 @@ namespace RazerBatteryTray
             CleanupDuplicateRazerDevices();
             CleanupDuplicateValkyrieDevices();
             CleanupDuplicateRapooDevices();
-            CleanupDuplicateHyperXDevices();
+            CleanupDuplicateHyperXDevices();
+            CleanupDuplicateSteelSeriesDevices();
             CleanupPhantomAppleDevices();
 
             List<MouseBatteryInfo> list = new List<MouseBatteryInfo>();
@@ -966,6 +984,73 @@ namespace RazerBatteryTray
             }
             catch { }
 
+                        // 2.12 Query SteelSeries Devices (Arctis Nova 5 / 5X Wireless Headset)
+            try
+            {
+                var ss = SteelSeriesDeviceHelper.QuerySteelSeriesDeviceInfo();
+                if (ss != null && (ss.IsConnected || ss.IsDonglePresent))
+                {
+                    bool alreadyInList = false;
+                    for (int i = 0; i < list.Count; i++)
+                    {
+                        if (list[i].DeviceId.Equals(ss.DeviceId, StringComparison.OrdinalIgnoreCase) ||
+                            (!string.IsNullOrEmpty(list[i].HardwareFingerprint) && list[i].HardwareFingerprint.Equals(ss.HardwareFingerprint, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            alreadyInList = true;
+                            break;
+                        }
+                    }
+
+                    if (!alreadyInList)
+                    {
+                        ss.IsCustom = false;
+                        list.Add(ss);
+                        if (ss.BatteryPercent >= 0)
+                        {
+                            UpdateCustomDeviceBattery(ss.DeviceId, ss.BatteryPercent, DateTime.Now);
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            // 2.13 Query Razer wireless headsets (BlackShark V2 Pro 2.4, 64B PA/PI protocol)
+            try
+            {
+                var razerHeadsets = RazerHeadsetHelper.QueryAllRazerHeadsets();
+                if (razerHeadsets != null && razerHeadsets.Count > 0)
+                {
+                    foreach (var dev in razerHeadsets)
+                    {
+                        if (dev != null && (dev.IsConnected || dev.IsDonglePresent))
+                        {
+                            bool alreadyInList = false;
+                            for (int i = 0; i < list.Count; i++)
+                            {
+                                if (list[i].DeviceId.Equals(dev.DeviceId, StringComparison.OrdinalIgnoreCase) ||
+                                    (!string.IsNullOrEmpty(list[i].HardwareFingerprint) && list[i].HardwareFingerprint.Equals(dev.HardwareFingerprint, StringComparison.OrdinalIgnoreCase)))
+                                {
+                                    alreadyInList = true;
+                                    break;
+                                }
+                            }
+
+                            if (!alreadyInList)
+                            {
+                                dev.IsCustom = false;
+                                list.Add(dev);
+                                if (dev.BatteryPercent >= 0)
+                                {
+                                    UpdateCustomDeviceBattery(dev.DeviceId, dev.BatteryPercent, DateTime.Now);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
+
             // 3. Query Custom Devices (Bluetooth / Generic HID)
             try
             {
@@ -991,6 +1076,14 @@ namespace RazerBatteryTray
                     bool isHyperX = HyperXDeviceHelper.IsHyperXDevice(cfg.HardwareFingerprint) ||
                                     HyperXDeviceHelper.IsHyperXDevice(cfg.DeviceId) ||
                                     HyperXDeviceHelper.IsHyperXDevice(cfg.OriginalName);
+
+
+
+                    bool isSteelSeries = SteelSeriesDeviceHelper.IsSteelSeriesDevice(cfg.HardwareFingerprint) ||
+
+                                         SteelSeriesDeviceHelper.IsSteelSeriesDevice(cfg.DeviceId) ||
+
+                                         SteelSeriesDeviceHelper.IsSteelSeriesDevice(cfg.OriginalName);
 
                     bool isRazer = (cfg.DeviceId != null && cfg.DeviceId.StartsWith("Razer:1532:", StringComparison.OrdinalIgnoreCase)) ||
                                    (!string.IsNullOrEmpty(cfg.HardwareFingerprint) && cfg.HardwareFingerprint.StartsWith("Razer:1532:", StringComparison.OrdinalIgnoreCase));
@@ -1112,6 +1205,20 @@ namespace RazerBatteryTray
                         continue;
                     }
 
+
+
+                    if (isSteelSeries && list.Exists(x => x.Brand == "SteelSeries"))
+                    {
+                        var existSs = list.Find(x => x.Brand == "SteelSeries");
+                        if (existSs != null)
+                        {
+                            existSs.IsCustom = true;
+                            if (cfg.Category != DeviceCategory.Generic) existSs.Category = cfg.Category;
+                            if (!string.IsNullOrEmpty(cfg.CustomName)) existSs.CustomName = cfg.CustomName;
+                        }
+                        continue;
+                    }
+
                     int batt = -1;
                     string friendlyName = null;
                     bool connected = false;
@@ -1140,6 +1247,21 @@ namespace RazerBatteryTray
                             {
                                 connected = false;
                                 batt = NuphyDeviceHelper.CachedBatteryPercent > 0 ? NuphyDeviceHelper.CachedBatteryPercent : -1;
+                            }
+                        }
+                        else if (isSteelSeries)
+                        {
+                            var ss = SteelSeriesDeviceHelper.QuerySteelSeriesDeviceInfo();
+                            if (ss != null && (ss.IsConnected || ss.IsDonglePresent))
+                            {
+                                connected = ss.IsConnected;
+                                batt = ss.BatteryPercent;
+                                friendlyName = ss.DeviceName;
+                            }
+                            else
+                            {
+                                connected = false;
+                                batt = SteelSeriesDeviceHelper.CachedBatteryPercent > 0 ? SteelSeriesDeviceHelper.CachedBatteryPercent : -1;
                             }
                         }
                         else if (isLogitech)

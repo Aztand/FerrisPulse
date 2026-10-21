@@ -233,6 +233,7 @@ namespace RazerBatteryTray
                 IsXyIndependent = (stState != null) ? stState.IsXyIndependent : false,
                 XyRatio = (stState != null && stState.XyRatio > 0) ? stState.XyRatio : 1.0,
                 PollingRate = (stState != null && stState.PollingRate > 0) ? stState.PollingRate : 1000,
+                MaxPollingRate = GetMaxPollingRateForModel(curPid, !string.IsNullOrEmpty(resolvedModelName) ? resolvedModelName : (stState != null ? stState.DeviceName : CachedDeviceName)),
                 SupportedPollingRates = GetSupportedPollingRatesForModel(curPid, !string.IsNullOrEmpty(resolvedModelName) ? resolvedModelName : (stState != null ? stState.DeviceName : CachedDeviceName))
             };
         }
@@ -309,6 +310,23 @@ namespace RazerBatteryTray
             }
         }
 
+        /// <summary>
+        /// 取该型号支持的最高回报率，用于 MouseBatteryInfo.MaxPollingRate（UI 档位兜底与提示文案）。
+        /// </summary>
+        public static int GetMaxPollingRateForModel(int pid, string modelName)
+        {
+            int[] rates = GetSupportedPollingRatesForModel(pid, modelName);
+            int max = 1000;
+            if (rates != null)
+            {
+                for (int i = 0; i < rates.Length; i++)
+                {
+                    if (rates[i] > max) max = rates[i];
+                }
+            }
+            return max;
+        }
+
         private static readonly Dictionary<int, string> RazerPidToOfficialName = new Dictionary<int, string>
         {
             // Viper series
@@ -344,7 +362,8 @@ namespace RazerBatteryTray
             { 0x00B3, "Razer DeathAdder V3 HyperSpeed" },
             { 0x00B0, "Razer DeathAdder V3" },
             { 0x00A2, "Razer DeathAdder V2 Pro" },
-            { 0x00A3, "Razer DeathAdder V2 Pro" },
+            { 0x00A3, "Razer DeathAdder V2 Pro" },
+            { 0x009C, "Razer DeathAdder V2 X HyperSpeed" },
             { 0x008A, "Razer DeathAdder V2" },
             { 0x007C, "Razer DeathAdder V2 Mini" },
             { 0x007D, "Razer DeathAdder V2 Mini" },
@@ -583,7 +602,8 @@ namespace RazerBatteryTray
             if (curPid == 0x0099 || // Orochi V2
                 curPid == 0x0085 || curPid == 0x0086 || // Basilisk X HyperSpeed
                 curPid == 0x00AC || // Viper V3 HyperSpeed
-                curPid == 0x0095 || // DeathAdder V2 X HyperSpeed
+                curPid == 0x009C || // DeathAdder V2 X HyperSpeed (AA 干电池，纯无线)
+                curPid == 0x0095 || // Naga V2 HyperSpeed
                 curPid == 0x008D || curPid == 0x008E) // Atheris
             {
                 return true;
@@ -1267,6 +1287,7 @@ namespace RazerBatteryTray
                                                         DpiStageCount = stageCount,
                                                         DpiStages = stageList,
                                                         PollingRate = pollingRate,
+                                                        MaxPollingRate = GetMaxPollingRateForModel(curPid, resolvedModelName),
                                                         SupportedPollingRates = GetSupportedPollingRatesForModel(curPid, resolvedModelName)
                                                     };
 
@@ -1868,6 +1889,16 @@ namespace RazerBatteryTray
         public static RazerDpiCapability GetDpiCapability(string deviceName, int pid)
         {
             string name = !string.IsNullOrEmpty(deviceName) ? deviceName.ToLowerInvariant() : "";
+            // DeathAdder V2 X HyperSpeed: 14K 光学传感器，50 DPI 步进
+            if (pid == 0x009C || name.Contains("deathadder v2 x"))
+            {
+                var cap14k = new RazerDpiCapability();
+                cap14k.MinDpi = 100;
+                cap14k.MaxDpi = 14000;
+                cap14k.Step = 50;
+                cap14k.Description = "Razer 14K 光学传感器";
+                return cap14k;
+            }
             // Focus Pro 35K Gen-2: DeathAdder V4 Pro, Viper V4 Pro, Viper V3 Pro, Basilisk V3 Pro 35K, etc.
             if (pid == 0x00BF || pid == 0x00BE || pid == 0x00E6 || pid == 0x00E5 || pid == 0x00DF || pid == 0x00DE ||
                 pid == 0x00CC || pid == 0x00CD || pid == 0x00D6 || pid == 0x00D7 || pid == 0x00C4 || pid == 0x00C5 ||

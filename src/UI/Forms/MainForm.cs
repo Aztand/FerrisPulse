@@ -861,7 +861,9 @@ namespace RazerBatteryTray
 
             LogitechDeviceHelper.LoadHardwareCache();
 
-            HyperXDeviceHelper.LoadHardwareCache();
+            HyperXDeviceHelper.LoadHardwareCache();
+
+            SteelSeriesDeviceHelper.LoadHardwareCache();
 
             InitializeFormUI();
 
