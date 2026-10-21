@@ -19,6 +19,7 @@
    - 3.7 Windows 行终止符腐败陷阱（`\r\r\n` Double-CR Bug）
    - 3.8 社区开源贡献与代码署名礼仪
    - 3.9 新品牌 HID 适配实战（飞智 GPA6 / 迈从 G87 V2）
+   - 3.10 社区硬件协议逆向实战（索尼 INZONE / 罗技 G502X / 怒喵 RACE / ATK 8K / 元派 P1）
 4. [版本发布标准作业程序 (Release SOP)](#4-版本发布标准作业程序-release-sop)
    - 4.1 云端标准流水线发布流程
    - 4.2 “发布后本地留旧测新”实战法则 (Local Test vs Remote Release SOP)
@@ -206,6 +207,46 @@
    - 未查通时**严禁把设备标成离线**：接收器与键盘在线就应显示在线、电量未知（有缓存才显示缓存值）；更不能伪造 `-1%` 为“已识别电量”。`MchoseDeviceHelper` 现已使用 `0x55` 性能帧并实机读到 21%。
    - `3837:3033` 必须在 `UniversalGamingDeviceHelper` 中显式排除，否则会被通用鼠标协议误当成 64 字节 Feature 设备探测。
 3. **通用基础设施**：新品牌统一复用 `HidTransport.cs`（SetupAPI 枚举 + HidD 属性/能力 + 重叠 I/O），不要在每个 Helper 中重复声明 P/Invoke；所有 64/65 字节报告写入前必须按 `HidP_GetCaps` 的 `OutputReportByteLength` 补齐，否则 `WriteFile` 返回 `ERROR_INVALID_PARAMETER (87)`。
+
+---
+
+### 3.10 社区硬件协议逆向实战（索尼 INZONE / 罗技 G502X / 怒喵 RACE / ATK 8K / 元派 P1）
+
+#### 1. 索尼 (Sony) INZONE Buds 真无线降噪电竞耳机 (WF-G700N, `054C:0EC2`)
+- **硬件拓扑与端点发现**：
+  - INZONE Buds 通过 2.4GHz USB-C 适配器与 PC 通信，在 Windows 下枚举多个 HID 集合。必须优先绑定 UsagePage `0xFF04`（Vendor-Defined Audio/Dongle 配置通道），输入/输出报文长度均为 64 字节。
+- **64 字节 Output Report `0x02` 查询帧**：
+  - 构造 `[0x02, 0x96, 0xC3, 0x41, 0x04, 0x01, SeqLo, SeqHi, 0x00...0x00, Checksum]`。
+  - 序列号为自增 16 位整型；校验和计算公式为 `(0x96 + 0xC3 + 0x41 + 0x04 + 0x01 + SeqLo + SeqHi) & 0xFF`，写入尾字节 `[63]`。
+- **64 字节 Input Report `0x02` 应答解析**：
+  - 校验有效性：`sum(rx[6..18]) & 0xFF == rx[19]`。
+  - 左耳塞电量：`rx[7]` 为百分比（`0..100`），`rx[8]` 为充电标志（非零为充电中）；若为 `0xFF` 则代表左耳在盒中断开。
+  - 右耳塞电量：`rx[11]` 为百分比（`0..100`），`rx[12]` 为充电标志；`0xFF` 为在盒中断开。
+  - 充电盒电量：`rx[15]` 为百分比（`0..100`），`rx[16]` 为充电标志。
+  - **三态智能降级机制**：双耳在耳时优先取最低电量保障预警；单耳入盒时优雅降级显示在耳耳塞电量；仅充电盒在位时显示盒子电量；全部入盒合盖休眠且收发器静默时，UI 显示休眠占位状态，杜绝误报设备丢失。
+
+#### 2. 罗技 (Logitech) G502 X PLUS 与 Lightspeed (C547) 接收器深度重构
+- **多端点优先级锁定（解决 WriteFile 报错）**：
+  - 罗技 Lightspeed `C547` 接收器在 Windows 下同时暴露 7 字节短集合（`0xFF00/0x0001`）与 20 字节长集合（`0xFF00/0x0002`）。向 7 字节短集合写入 HID++ 报文必然触发 `WriteFile` 错误。必须枚举并优先选定 20 字节通信端点。
+- **HID++ 2.0 Ping 命令规范化**：
+  - 在 HID++ 2.0 中，`byte 3 = (function << 4) | swid`。根特性函数 0 是 `getFeature`，根特性函数 1 才是 `getProtocolVersion`。标准 Ping 命令必须设 `txPing[3] = 0x18`（函数 1 + swid 8），并携带特征 Token `0x5A`，否则 G502 X 等新固件直接无响应。
+- **设备名称偏移纠正**：
+  - `0x0005`（DeviceNameType）特性的 `getDeviceName`，实际字符从 `byte 4` 开始存储（而非 `byte 5`）。若从第 5 字节读取会导致首字母丢失（如变成 `502 X PLUS`）。从第 4 字节读取完整恢复 `G502 X PLUS`。
+- **统一电量特性 `0x1004` 解析**：
+  - `byte 4` 为精确电量百分比（0..100）；`byte 5` 为离散电量级别（1..4）；`byte 6` 才是充电状态（1: 充电中, 2: 充满, 3: 未充电/放电）。严禁把第 5 字节误当成布尔值。
+- **并发保护与接收器解耦**：
+  - 采用 `(matchDevIdx, matchFeatIdx, matchSwid)` 三元组与截止时间匹配机制，杜绝 G HUB 后台并发通信干扰；解耦接收器硬编码，避免通用 Lightspeed 设备名称被覆盖。
+
+#### 3. 怒喵 (Angry Miao) AM Infinity .97 客制化无线协议
+- **RACE 62 字节协议**：
+  - 2.4G 接收器 (`0E8D:0703`) 与有线模式 (`0E8D:0880` / `35A1:0035`) 采用 62 字节 Feature 报文。
+  - 发送 Report ID `0x14`，前置包头 `0x05, 0x5A, 0x01, 0x00, 0x02`，查询指令 `0x30CF`。
+  - 应答读取当前电量值与充放电状态，配合官方暗金品牌色呈现。
+
+#### 4. ATK 8K NANO 与元派 (Metapanda) P1 WE 协议升级
+- **8K 接收器 Output/Input Report 异步回退**：
+  - 部分超高回报率（4000Hz/8000Hz）接收器（如 ATK A9 AIR / X1 V2 的 8K NANO 接收器 `373B:1279` / `12E9`）禁用了 64 字节 `HidD_SetFeature`，调用必然失败。
+  - 必须升级 `QueryBekenWeBattery`：当 Feature 方式失败时，自动回退到 17 字节 Output Report（`WriteFile`）发送 `0x05, 0x11, 0x00, 0x00, 0x08, 0x01` 并通过重叠 I/O `ReadFile` 读取 17 字节 Input 应答，解析 `rx[7]` 获得真实电量。元派 P1（`3554:F5A9` / `F5AB` / `F5AC`）全模组完美兼容此逻辑。
 
 ---
 
