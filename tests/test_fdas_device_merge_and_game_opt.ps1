@@ -110,13 +110,17 @@ $mSetOpt = $tMainForm.GetMethod("SetAutoGameOptEnabled", [System.Reflection.Bind
 # 1. 测试开启优化 -> 卡片拉伸至展开高度 (255)，子控件可见
 $mSetOpt.Invoke($form, @($true))
 $mUpdate.Invoke($form, @($testDev, [System.Drawing.Color]::FromArgb(0, 255, 0)))
-[System.Threading.Thread]::Sleep(300)
-[System.Windows.Forms.Application]::DoEvents()
 
 $cardPerf = Get-FieldVal "cardPerformance"
 $btnManageGames = Get-FieldVal "btnManageGames"
 $chkAutoGameDpi = Get-FieldVal "chkAutoGameDpi"
 $chkAutoGameRate = Get-FieldVal "chkAutoGameRate"
+
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+while ($cardPerf.Height -lt 250 -and $sw.ElapsedMilliseconds -lt 2000) {
+    [System.Threading.Thread]::Sleep(30)
+    [System.Windows.Forms.Application]::DoEvents()
+}
 
 if ($null -eq $cardPerf) {
     Write-Host "FAIL: cardPerformance 未初始化！" -ForegroundColor Red
@@ -137,8 +141,11 @@ Write-Host "PASS: 开启优化后卡片正常拉伸 (Height=$($cardPerf.Height))
 # 2. 测试关闭优化 -> 卡片收缩至收起高度 (148)，子控件彻底隐藏
 $mSetOpt.Invoke($form, @($false))
 $mUpdate.Invoke($form, @($testDev, [System.Drawing.Color]::FromArgb(0, 255, 0)))
-[System.Threading.Thread]::Sleep(300)
-[System.Windows.Forms.Application]::DoEvents()
+$swRetract = [System.Diagnostics.Stopwatch]::StartNew()
+while ($cardPerf.Height -gt 155 -and $swRetract.ElapsedMilliseconds -lt 2000) {
+    [System.Threading.Thread]::Sleep(30)
+    [System.Windows.Forms.Application]::DoEvents()
+}
 
 Write-Host "   关闭优化时卡片高度: $($cardPerf.Height) (预期 <= 155)" -ForegroundColor Gray
 if ($cardPerf.Height -gt 155) {
