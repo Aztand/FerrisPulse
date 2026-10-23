@@ -116,8 +116,13 @@ $btnManageGames = Get-FieldVal "btnManageGames"
 $chkAutoGameDpi = Get-FieldVal "chkAutoGameDpi"
 $chkAutoGameRate = Get-FieldVal "chkAutoGameRate"
 
+$fDpiScale = $tMainForm.GetField("dpiScale", [System.Reflection.BindingFlags]'Instance,NonPublic')
+$scale = if ($fDpiScale) { [float]$fDpiScale.GetValue($form) } else { 1.0 }
+$expectedExpandedH = [int](255 * $scale)
+$expectedRetractedH = [int](148 * $scale)
+
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
-while ($cardPerf.Height -lt 250 -and $sw.ElapsedMilliseconds -lt 2000) {
+while ($cardPerf.Height -lt ($expectedExpandedH - 5) -and $sw.ElapsedMilliseconds -lt 2000) {
     [System.Threading.Thread]::Sleep(30)
     [System.Windows.Forms.Application]::DoEvents()
 }
@@ -127,29 +132,29 @@ if ($null -eq $cardPerf) {
     exit 1
 }
 
-Write-Host "   开启优化时卡片高度: $($cardPerf.Height) (预期 >= 250)" -ForegroundColor Gray
-if ($cardPerf.Height -lt 250) {
-    Write-Host "FAIL: 开启优化后卡片高度未拉伸至展开高度 (实际: $($cardPerf.Height))！" -ForegroundColor Red
+Write-Host ("   开启优化时卡片高度: " + $cardPerf.Height + " (预期约 " + $expectedExpandedH + ")") -ForegroundColor Gray
+if ($cardPerf.Height -lt ($expectedExpandedH - 5)) {
+    Write-Host ("FAIL: 开启优化后卡片高度未拉伸至展开高度 (实际: " + $cardPerf.Height + ", 期望: " + $expectedExpandedH + ")！") -ForegroundColor Red
     exit 1
 }
 if (-not $btnManageGames.Visible -or -not $chkAutoGameDpi.Visible -or -not $chkAutoGameRate.Visible) {
     Write-Host "FAIL: 开启优化后子控件必须全部可见！" -ForegroundColor Red
     exit 1
 }
-Write-Host "PASS: 开启优化后卡片正常拉伸 (Height=$($cardPerf.Height)) 且子控件全部点亮" -ForegroundColor Green
+Write-Host ("PASS: 开启优化后卡片正常拉伸 (Height=" + $cardPerf.Height + ") 且子控件全部点亮") -ForegroundColor Green
 
-# 2. 测试关闭优化 -> 卡片收缩至收起高度 (148)，子控件彻底隐藏
+# 2. 测试关闭优化 -> 卡片收缩至收起高度 (148 * scale)，子控件彻底隐藏
 $mSetOpt.Invoke($form, @($false))
 $mUpdate.Invoke($form, @($testDev, [System.Drawing.Color]::FromArgb(0, 255, 0)))
 $swRetract = [System.Diagnostics.Stopwatch]::StartNew()
-while ($cardPerf.Height -gt 155 -and $swRetract.ElapsedMilliseconds -lt 2000) {
+while ($cardPerf.Height -gt ($expectedRetractedH + 10) -and $swRetract.ElapsedMilliseconds -lt 2000) {
     [System.Threading.Thread]::Sleep(30)
     [System.Windows.Forms.Application]::DoEvents()
 }
 
-Write-Host "   关闭优化时卡片高度: $($cardPerf.Height) (预期 <= 155)" -ForegroundColor Gray
-if ($cardPerf.Height -gt 155) {
-    Write-Host "FAIL: 关闭优化后卡片高度未收回 (实际: $($cardPerf.Height))！" -ForegroundColor Red
+Write-Host ("   关闭优化时卡片高度: " + $cardPerf.Height + " (预期约 " + $expectedRetractedH + ")") -ForegroundColor Gray
+if ($cardPerf.Height -gt ($expectedRetractedH + 10)) {
+    Write-Host ("FAIL: 关闭优化后卡片高度未收回 (实际: " + $cardPerf.Height + ", 期望: " + $expectedRetractedH + ")！") -ForegroundColor Red
     exit 1
 }
 if ($btnManageGames.Visible -or $chkAutoGameDpi.Visible -or $chkAutoGameRate.Visible) {

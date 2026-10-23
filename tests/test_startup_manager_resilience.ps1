@@ -48,6 +48,11 @@ $prevRunVal = (Get-ItemProperty -Path $runKeyPath -Name "FerrisPulse" -ErrorActi
 $prevLnkExisted = Test-Path $startupLnk
 
 try {
+    # 确保测试环境注册表 Run 键存在 (兼容纯净 CI 容器)
+    if (-not (Test-Path $runKeyPath)) {
+        New-Item -Path $runKeyPath -Force | Out-Null
+    }
+
     # 2. 模拟 Windows 任务管理器将 FerrisPulse 禁用 (设置为 0x03 奇数标记)
     if (-not (Test-Path $approvedRunKeyPath)) {
         New-Item -Path $approvedRunKeyPath -Force | Out-Null

@@ -175,7 +175,7 @@ namespace RazerBatteryTray
             errorMessage = null;
             try
             {
-                using (var runKey = Registry.CurrentUser.OpenSubKey(RunRegistryKey, true))
+                using (var runKey = Registry.CurrentUser.CreateSubKey(RunRegistryKey))
                 {
                     if (runKey == null)
                     {
